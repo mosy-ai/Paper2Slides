@@ -47,25 +47,29 @@ SLIDES_PAGE_RANGES: Dict[str, tuple[int, int]] = {
 class GenerationConfig:
     """
     User configuration for generation.
-    
+
     Attributes:
         output_type: Type of output (poster or slides)
         poster_density: Content density for poster (sparse/medium/dense)
         slides_length: Page count level for slides (short/medium/long)
         style: Style type (academic/doraemon/custom)
         custom_style: User's custom style description (used when style=custom)
+        language: Language for content generation (vietnamese/english)
     """
     output_type: OutputType = OutputType.POSTER
-    
+
     # Poster specific
     poster_density: PosterDensity = PosterDensity.MEDIUM
-    
+
     # Slides specific
     slides_length: SlidesLength = SlidesLength.MEDIUM
-    
+
     # Style
     style: StyleType = StyleType.ACADEMIC
     custom_style: Optional[str] = None
+
+    # Language
+    language: str = "vietnamese"
     
     def get_page_range(self) -> tuple[int, int]:
         """Get page count range for slides."""
@@ -78,6 +82,7 @@ class GenerationConfig:
             "slides_length": self.slides_length.value,
             "style": self.style.value,
             "custom_style": self.custom_style,
+            "language": self.language,
         }
 
 

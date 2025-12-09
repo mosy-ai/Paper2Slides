@@ -4,7 +4,9 @@ LLM prompts for content planning (slides and posters)
 from typing import Dict
 
 # Paper slides planning prompt
-PAPER_SLIDES_PLANNING_PROMPT = """Organize the document into {min_pages}-{max_pages} slides by distributing the content below.
+PAPER_SLIDES_PLANNING_PROMPT = """**CRITICAL LANGUAGE REQUIREMENT: Generate ALL content (titles, slide content, descriptions) in {language} language.**
+
+Organize the document into {min_pages}-{max_pages} slides by distributing the content below.
 
 ## Document Summary
 {summary}
@@ -116,7 +118,9 @@ Copy specific numbers, percentages, and metrics directly from the source.""",
 }
 
 # Paper poster planning prompt
-PAPER_POSTER_PLANNING_PROMPT = """Organize the document into poster sections by distributing the content below.
+PAPER_POSTER_PLANNING_PROMPT = """**CRITICAL LANGUAGE REQUIREMENT: Generate ALL content (titles, section content, descriptions) in {language} language.**
+
+Organize the document into poster sections by distributing the content below.
 
 ## Document Summary
 {summary}
@@ -201,7 +205,9 @@ PAPER_POSTER_PLANNING_PROMPT = """Organize the document into poster sections by 
 """
 
 # General document prompts (no fixed academic structure)
-GENERAL_SLIDES_PLANNING_PROMPT = """Organize the document into {min_pages}-{max_pages} slides by distributing the content below.
+GENERAL_SLIDES_PLANNING_PROMPT = """**CRITICAL LANGUAGE REQUIREMENT: Generate ALL content (titles, slide content, descriptions) in {language} language.**
+
+Organize the document into {min_pages}-{max_pages} slides by distributing the content below.
 
 ## Document Content
 {summary}
@@ -305,7 +311,9 @@ Copy specific numbers and technical details directly from the source.""",
 }
 
 # General poster planning prompt
-GENERAL_POSTER_PLANNING_PROMPT = """Organize the document into poster sections by distributing the content below.
+GENERAL_POSTER_PLANNING_PROMPT = """**CRITICAL LANGUAGE REQUIREMENT: Generate ALL content (titles, section content, descriptions) in {language} language.**
+
+Organize the document into poster sections by distributing the content below.
 
 ## Document Content
 {summary}

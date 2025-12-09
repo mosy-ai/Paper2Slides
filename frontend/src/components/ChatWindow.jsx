@@ -29,6 +29,7 @@ const ChatWindow = () => {
     const [length, setLength] = useState("medium"); // 'short', 'medium', 'long' (for slides)
     const [density, setDensity] = useState("medium"); // 'sparse', 'medium', 'dense' (for poster)
     const [fastMode, setFastMode] = useState(true); // Fast mode: parse only, no RAG indexing (only for paper content, default enabled)
+    const [language, setLanguage] = useState("vietnamese"); // 'vietnamese' or 'english'
 
     const [showLeftPanel, setShowLeftPanel] = useState(true);
     const [currentWorkflow, setCurrentWorkflow] = useState(null); // Now includes conversationId
@@ -300,7 +301,7 @@ const ChatWindow = () => {
             messages: [],
             files: [],
             generatedOutputs: [],
-            config: { content, style, output, length, density, fastMode },
+            config: { content, style, output, length, density, fastMode, language },
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
         };
@@ -318,6 +319,7 @@ const ChatWindow = () => {
         length,
         density,
         fastMode,
+        language,
         findEmptyConversation,
     ]);
 
@@ -345,6 +347,8 @@ const ChatWindow = () => {
                     setDensity(conv.config.density);
                 if (conv.config.fastMode !== undefined)
                     setFastMode(conv.config.fastMode);
+                if (conv.config.language !== undefined)
+                    setLanguage(conv.config.language);
             }
         },
         [conversations],
@@ -453,6 +457,7 @@ const ChatWindow = () => {
                         length,
                         density,
                         fastMode,
+                        language,
                     },
                     timestamp: new Date().toISOString(),
                 };
@@ -576,6 +581,7 @@ const ChatWindow = () => {
                         length,
                         density,
                         fastMode,
+                        language,
                     },
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
@@ -607,7 +613,7 @@ const ChatWindow = () => {
             role: "user",
             content: text,
             files: filesWithBlobUrls,
-            config: { content, style, output, length, density, fastMode },
+            config: { content, style, output, length, density, fastMode, language },
             timestamp: new Date().toISOString(),
         };
 
@@ -636,7 +642,7 @@ const ChatWindow = () => {
 
         // Save current config to conversation
         updateConversation(convId, {
-            config: { content, style, output, length, density, fastMode },
+            config: { content, style, output, length, density, fastMode, language },
         });
 
         setIsLoading(true);
@@ -686,6 +692,7 @@ const ChatWindow = () => {
             formData.append("content", content);
             formData.append("output_type", output);
             formData.append("style", style);
+            formData.append("language", language);
             if (output === "slides") {
                 formData.append("length", length);
             } else {
@@ -967,7 +974,7 @@ const ChatWindow = () => {
             id: generateId(),
             role: "user",
             content: "Regenerate with current settings",
-            config: { content, style, output, length, density, fastMode },
+            config: { content, style, output, length, density, fastMode, language },
             timestamp: new Date().toISOString(),
         };
 
@@ -1022,6 +1029,7 @@ const ChatWindow = () => {
             formData.append("content", content);
             formData.append("output_type", output);
             formData.append("style", style);
+            formData.append("language", language);
             formData.append("session_id", sessionId); // Pass session_id to reuse files
             if (output === "slides") {
                 formData.append("length", length);
@@ -1391,6 +1399,8 @@ const ChatWindow = () => {
                             setDensity={setDensity}
                             fastMode={fastMode}
                             setFastMode={setFastMode}
+                            language={language}
+                            setLanguage={setLanguage}
                             compact={messages.length > 0}
                             onRegenerate={handleRegenerate}
                             isLoading={isLoading}

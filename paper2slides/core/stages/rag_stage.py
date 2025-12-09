@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from langfuse import observe
 from langfuse.openai import OpenAI
 
 from ...utils import save_json
@@ -112,6 +113,7 @@ def _replace_images_with_base64(
     return content_parts, image_count
 
 
+@observe(name="_run_fast_queries_by_category")
 async def _run_fast_queries_by_category(
     client,
     markdown_content: str,

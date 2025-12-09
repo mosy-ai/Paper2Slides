@@ -192,7 +192,11 @@ class ContentPlanner:
         # Build assets section based on available tables/figures
         assets_section = self._build_assets_section(tables_md, bool(figure_images))
 
+        # Get language from config (capitalize first letter for natural display)
+        language = gen_input.config.language.capitalize()
+
         prompt = template.format(
+            language=language,
             min_pages=min_pages,
             max_pages=max_pages,
             summary=self._truncate(summary, 10000),
@@ -225,7 +229,11 @@ class ContentPlanner:
         # Build assets section based on available tables/figures
         assets_section = self._build_assets_section(tables_md, bool(figure_images))
 
+        # Get language from config (capitalize first letter for natural display)
+        language = gen_input.config.language.capitalize()
+
         prompt = template.format(
+            language=language,
             density_guidelines=density_guidelines,
             summary=self._truncate(summary, 10000),
             assets_section=assets_section,

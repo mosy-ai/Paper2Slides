@@ -36,6 +36,7 @@ from paper2slides.core import (
     get_config_name,
     run_pipeline,
 )
+from paper2slides.core.state import STAGES, create_state, load_state, save_state
 from paper2slides.utils import setup_logging
 from paper2slides.utils.path_utils import get_project_name
 
@@ -176,6 +177,7 @@ async def chat(
     fast_mode: Optional[str] = Form(
         None
     ),  # 'true' or 'false' - fast mode for paper content
+    language: str = Form("vietnamese"),  # 'vietnamese' or 'english'
     session_id: Optional[str] = Form(None),  # Existing session ID to reuse files
     files: List[UploadFile] = File([]),
 ):
@@ -190,6 +192,7 @@ async def chat(
         length: 'short', 'medium', 'long' (for slides)
         density: 'sparse', 'medium', 'dense' (for poster)
         fast_mode: 'true' or 'false' - fast mode for paper content (no RAG indexing)
+        language: 'vietnamese' or 'english' - language for generation
         session_id: Optional existing session ID to reuse files (for regeneration)
         files: List of uploaded files (PDF, MD, etc.)
 
@@ -272,7 +275,7 @@ async def chat(
         print(f"Files: {len(saved_files)} file(s)")
         for f in saved_files:
             print(f"  - {f['filename']} ({f['size']} bytes)")
-        print(f"Config: {output_type} | {style} | {content}")
+        print(f"Config: {output_type} | {style} | {content} | {language}")
         if length:
             print(f"  Length: {length}")
         if density:
@@ -310,6 +313,7 @@ async def chat(
             length,
             density,
             fast_mode_bool,
+            language,
             session_manager,  # Pass session manager to check for cancellation
         )
 
@@ -333,6 +337,7 @@ async def generate_slides_with_pipeline(
     length: Optional[str] = None,
     density: Optional[str] = None,
     fast_mode: bool = False,
+    language: str = "vietnamese",
     session_manager: SessionManager = None,
 ) -> dict:
     """
@@ -348,6 +353,7 @@ async def generate_slides_with_pipeline(
         length: 'short', 'medium', 'long' (for slides)
         density: 'sparse', 'medium', 'dense' (for poster)
         fast_mode: Fast mode for paper content (no RAG indexing)
+        language: 'vietnamese' or 'english' - language for generation
 
     Returns:
         Dictionary with slides info and output paths
@@ -403,6 +409,7 @@ async def generate_slides_with_pipeline(
         "fast_mode": fast_mode
         if content == "paper"
         else False,  # Fast mode only for paper content
+        "language": language,
     }
 
     base_dir = get_base_dir(str(OUTPUT_DIR), project_name, content)
@@ -421,9 +428,6 @@ async def generate_slides_with_pipeline(
     # Detect start stage first
     from_stage = detect_start_stage(base_dir, config_dir, config)
     print(f"Starting from stage: {from_stage}")
-
-    # Create initial state BEFORE starting pipeline
-    from paper2slides.core.state import STAGES, create_state, save_state
 
     initial_state = create_state(config)
 
@@ -483,7 +487,6 @@ def _update_state_on_error(
     fast_mode: bool,
 ):
     """Update state.json when background pipeline fails"""
-    from paper2slides.core.state import load_state, save_state
 
     # Find PDF files
     pdf_files = [f for f in files if f["filename"].lower().endswith(".pdf")]
@@ -537,6 +540,7 @@ async def run_pipeline_background(
     length: Optional[str],
     density: Optional[str],
     fast_mode: bool = False,
+    language: str = "vietnamese",
     session_manager: SessionManager = None,
 ):
     """
@@ -568,6 +572,7 @@ async def run_pipeline_background(
             length,
             density,
             fast_mode,
+            language,
             session_manager,
         )
 

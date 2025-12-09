@@ -14,6 +14,8 @@ const ConfigPanel = ({
     setDensity,
     fastMode = false,
     setFastMode,
+    language,
+    setLanguage,
     compact = false,
     onRegenerate,
     isLoading = false,
@@ -357,6 +359,17 @@ const ConfigPanel = ({
                                 ]}
                                 value={content}
                                 onChange={setContent}
+                            />
+
+                            {/* Language */}
+                            <SegmentedControl
+                                label="Language"
+                                options={[
+                                    { label: "Vietnamese", value: "vietnamese" },
+                                    { label: "English", value: "english" },
+                                ]}
+                                value={language}
+                                onChange={setLanguage}
                             />
 
                             {/* Fast Mode Toggle - Only show for paper content */}

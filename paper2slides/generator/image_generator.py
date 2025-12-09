@@ -19,15 +19,15 @@ from ..prompts.image_generation import (
     FORMAT_SLIDE,
     POSTER_COMMON_STYLE_RULES,
     POSTER_FIGURE_HINT,
-    POSTER_STYLE_HINTS,
     SLIDE_COMMON_STYLE_RULES,
     SLIDE_FIGURE_HINT,
     SLIDE_LAYOUTS_ACADEMIC,
     SLIDE_LAYOUTS_DEFAULT,
     SLIDE_LAYOUTS_DORAEMON,
-    SLIDE_STYLE_HINTS,
     STYLE_PROCESS_PROMPT,
     VISUALIZATION_HINTS,
+    get_poster_style_hint,
+    get_slide_style_hint,
 )
 from .config import GenerationInput
 from .content_planner import ContentPlan, Section
@@ -136,17 +136,20 @@ class ImageGenerator:
         all_sections_md = self._format_sections_markdown(plan)
         all_images = self._filter_images(plan.sections, figure_images)
 
+        # Get language from config
+        language = gen_input.config.language
+
         if plan.output_type == "poster":
             return self._generate_poster(
-                style_name, processed_style, all_sections_md, all_images
+                style_name, processed_style, all_sections_md, all_images, language
             )
         else:
             return self._generate_slides(
-                plan, style_name, processed_style, all_sections_md, figure_images
+                plan, style_name, processed_style, all_sections_md, figure_images, language
             )
 
     def _generate_poster(
-        self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images
+        self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images, language: str = "vietnamese"
     ) -> List[GeneratedImage]:
         """Generate 1 poster image."""
         prompt = self._build_poster_prompt(
@@ -154,6 +157,7 @@ class ImageGenerator:
             style_name=style_name,
             processed_style=processed_style,
             sections_md=sections_md,
+            language=language,
         )
 
         image_data, mime_type = self._call_model(prompt, images)
@@ -170,6 +174,7 @@ class ImageGenerator:
         processed_style: Optional[ProcessedStyle],
         all_sections_md,
         figure_images,
+        language: str = "vietnamese",
     ) -> List[GeneratedImage]:
         """Generate N slide images."""
         results = []
@@ -197,6 +202,7 @@ class ImageGenerator:
                 layout_rule=layout_rule,
                 slide_info=f"Slide {i + 1} of {total}",
                 context_md=all_sections_md,
+                language=language,
             )
 
             # Collect reference images
@@ -228,11 +234,11 @@ class ImageGenerator:
 
         return results
 
-    def _format_custom_style_for_poster(self, ps: ProcessedStyle) -> str:
+    def _format_custom_style_for_poster(self, ps: ProcessedStyle, language: str) -> str:
         """Format ProcessedStyle into style hints string for poster."""
         parts = [
             ps.style_name + ".",
-            "English text only.",
+            f"{language.capitalize()} text only.",
             "Use ROUNDED sans-serif fonts for ALL text.",
             "Characters should react to or interact with the content, with appropriate poses/actions and sizes - not just decoration."
             f"LIMITED COLOR PALETTE (3-4 colors max): {ps.color_tone}.",
@@ -242,11 +248,11 @@ class ImageGenerator:
             parts.append(ps.special_elements + ".")
         return " ".join(parts)
 
-    def _format_custom_style_for_slide(self, ps: ProcessedStyle) -> str:
+    def _format_custom_style_for_slide(self, ps: ProcessedStyle, language: str) -> str:
         """Format ProcessedStyle into style hints string for slide."""
         parts = [
             ps.style_name + ".",
-            "English text only.",
+            f"{language.capitalize()} text only.",
             "Use ROUNDED sans-serif fonts for ALL text.",
             "Characters should react to or interact with the content, with appropriate poses/actions and sizes - not just decoration.",
             f"LIMITED COLOR PALETTE (3-4 colors max): {ps.color_tone}.",
@@ -262,20 +268,19 @@ class ImageGenerator:
         style_name,
         processed_style: Optional[ProcessedStyle],
         sections_md,
+        language: str = "vietnamese",
     ) -> str:
         """Build prompt for poster."""
         parts = [format_prefix]
 
         if style_name == "custom" and processed_style:
             parts.append(
-                f"Style: {self._format_custom_style_for_poster(processed_style)}"
+                f"Style: {self._format_custom_style_for_poster(processed_style, language)}"
             )
             if processed_style.decorations:
                 parts.append(f"Decorations: {processed_style.decorations}")
         else:
-            parts.append(
-                POSTER_STYLE_HINTS.get(style_name, POSTER_STYLE_HINTS["academic"])
-            )
+            parts.append(get_poster_style_hint(style_name, language))
 
         parts.append(VISUALIZATION_HINTS)
         parts.append(POSTER_FIGURE_HINT)
@@ -291,18 +296,17 @@ class ImageGenerator:
         layout_rule,
         slide_info,
         context_md,
+        language: str = "vietnamese",
     ) -> str:
         """Build prompt for slide with layout rules and consistency."""
         parts = [FORMAT_SLIDE]
 
         if style_name == "custom" and processed_style:
             parts.append(
-                f"Style: {self._format_custom_style_for_slide(processed_style)}"
+                f"Style: {self._format_custom_style_for_slide(processed_style, language)}"
             )
         else:
-            parts.append(
-                SLIDE_STYLE_HINTS.get(style_name, SLIDE_STYLE_HINTS["academic"])
-            )
+            parts.append(get_slide_style_hint(style_name, language))
 
         # Add layout rule, then decorations if custom style
         parts.append(layout_rule)
