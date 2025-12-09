@@ -822,6 +822,194 @@ async def get_result(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def extract_slide_content(session_id: str) -> dict:
+    """
+    Extract structured slide content from checkpoint files.
+
+    Args:
+        session_id: The session ID to extract content for
+
+    Returns:
+        Dictionary with slides array containing structured content
+
+    Raises:
+        HTTPException: If session not found, not completed, or missing data
+    """
+    # Find the session directory
+    session_dir = UPLOAD_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(
+            status_code=404, detail=f"Session {session_id} not found"
+        )
+
+    # Get PDF files from session
+    pdf_files = list(session_dir.glob("*.pdf"))
+    if not pdf_files:
+        raise HTTPException(
+            status_code=400, detail=f"No PDF files found in session {session_id}"
+        )
+
+    # Determine project name
+    if len(pdf_files) > 1:
+        project_name = f"session_{session_id[:8]}"
+    else:
+        project_name = get_project_name(str(pdf_files[0]))
+
+    # Find the checkpoint files by searching both content types
+    checkpoint_plan_path = None
+    config_dir = None
+    timestamp_dir = None
+
+    for content_type in ["paper", "general"]:
+        base_dir = Path(get_base_dir(str(OUTPUT_DIR), project_name, content_type))
+        if base_dir.exists():
+            # Look for checkpoint_plan.json files
+            for plan_file in base_dir.rglob("checkpoint_plan.json"):
+                if plan_file.is_file():
+                    # Check if this is the right session by loading state.json
+                    state_file = plan_file.parent / "state.json"
+                    if state_file.exists():
+                        try:
+                            with open(state_file, "r") as f:
+                                state_data = json.load(f)
+                            if state_data.get("session_id") == session_id:
+                                checkpoint_plan_path = plan_file
+                                config_dir = plan_file.parent
+                                # Find the timestamp directory (where images are)
+                                for d in config_dir.iterdir():
+                                    if d.is_dir() and not d.name.startswith("checkpoint"):
+                                        timestamp_dir = d
+                                        break
+                                break
+                        except Exception as e:
+                            logger.warning(f"Error reading state file: {e}")
+                            continue
+
+            if checkpoint_plan_path:
+                break
+
+    if not checkpoint_plan_path or not checkpoint_plan_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint plan not found for session {session_id}. Generation may not be complete."
+        )
+
+    # Load checkpoint_plan.json
+    try:
+        with open(checkpoint_plan_path, "r") as f:
+            plan_data = json.load(f)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reading checkpoint plan: {str(e)}"
+        )
+
+    # Extract sections
+    sections = plan_data.get("sections", [])
+    tables_index = plan_data.get("tables_index", {})
+    figures_index = plan_data.get("figures_index", {})
+    output_type = plan_data.get("output_type", "slides")
+
+    # Find generated images in timestamp directory
+    image_files = []
+    if timestamp_dir and timestamp_dir.exists():
+        # Sort image files by name (slide_01.png, slide_02.png, etc.)
+        image_files = sorted([
+            f for f in timestamp_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]
+        ])
+
+    # Build structured response
+    slides = []
+    for i, section in enumerate(sections):
+        slide_num = i + 1
+
+        # Get corresponding image if available
+        image_url = None
+        if i < len(image_files):
+            image_file = image_files[i]
+            relative_path = image_file.relative_to(OUTPUT_DIR)
+            image_url = f"/outputs/{relative_path}"
+
+        # Resolve table references
+        tables = []
+        for table_ref in section.get("tables", []):
+            table_id = table_ref.get("table_id")
+            if table_id in tables_index:
+                table_info = tables_index[table_id]
+                tables.append({
+                    "id": table_info.get("id"),
+                    "caption": table_info.get("caption"),
+                    "html": table_info.get("html"),
+                    "extract": table_ref.get("extract", ""),
+                    "focus": table_ref.get("focus", "")
+                })
+
+        # Resolve figure references
+        figures = []
+        for figure_ref in section.get("figures", []):
+            figure_id = figure_ref.get("figure_id")
+            if figure_id in figures_index:
+                figure_info = figures_index[figure_id]
+                figures.append({
+                    "id": figure_info.get("id"),
+                    "caption": figure_info.get("caption"),
+                    "focus": figure_ref.get("focus", "")
+                })
+
+        # Build slide object
+        slide = {
+            "slide_number": slide_num,
+            "section_id": section.get("id"),
+            "title": section.get("title"),
+            "section_type": section.get("type"),
+            "content": section.get("content"),
+            "image_url": image_url,
+            "tables": tables,
+            "figures": figures
+        }
+
+        slides.append(slide)
+
+    return {
+        "session_id": session_id,
+        "output_type": output_type,
+        "total_slides": len(slides),
+        "slides": slides
+    }
+
+
+@app.get("/api/slides/{session_id}/content")
+async def get_slide_content(session_id: str):
+    """
+    Get structured slide content for a completed session.
+
+    Returns detailed content for each slide including:
+    - Slide number and title
+    - Text content for narration
+    - Image URL for the slide
+    - Referenced tables and figures with metadata
+
+    This endpoint is designed for programmatic access and video generation workflows.
+
+    Args:
+        session_id: The session ID to retrieve content for
+
+    Returns:
+        JSON with array of slide objects containing structured content
+    """
+    try:
+        return extract_slide_content(session_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error extracting slide content for session {session_id}: {e}",
+            exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/download/{filepath:path}")
 async def download_file(filepath: str):
     """Download generated file (supports subdirectories)"""
