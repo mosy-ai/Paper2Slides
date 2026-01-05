@@ -298,13 +298,14 @@ class ContentPlanner:
                     caption_text = f"**{fig['figure_id']}**"
                 content.append({"type": "text", "text": caption_text})
 
-                # Base64 image
+                # Base64 image - use "low" detail to reduce token usage
+                # Low detail = 85 tokens per image vs thousands for high detail
                 content.append(
                     {
                         "type": "image_url",
                         "image_url": {
                             "url": f"data:{fig['mime_type']};base64,{fig['base64']}",
-                            # "detail": "auto",
+                            "detail": "low",
                         },
                     }
                 )
@@ -464,10 +465,25 @@ class ContentPlanner:
             ),
         ]
 
-    def _load_figure_images(self, origin) -> List[Dict]:
-        """Load figure images as base64 with caption."""
+    def _load_figure_images(self, origin, max_images: int = 50) -> List[Dict]:
+        """Load figure images as base64 with caption.
+
+        Args:
+            origin: The origin object containing figures
+            max_images: Maximum number of images to load (default 50)
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        total_figures = len(origin.figures)
+        if total_figures > max_images:
+            logger.warning(
+                f"Limiting images from {total_figures} to {max_images} to avoid context overflow"
+            )
+
         images = []
-        for fig in origin.figures:
+        for fig in origin.figures[:max_images]:  # Limit number of images
             # Build full path
             if origin.base_path:
                 img_path = Path(origin.base_path) / fig.image_path

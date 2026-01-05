@@ -7,6 +7,8 @@ Generate poster/slides images from ContentPlan.
 import base64
 import json
 import os
+import random
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -31,6 +33,38 @@ from ..prompts.image_generation import (
 )
 from .config import GenerationInput
 from .content_planner import ContentPlan, Section
+
+
+def retry_with_exponential_backoff(
+    func,
+    initial_delay: float = 1,
+    exponential_base: float = 2,
+    jitter: bool = True,
+    max_retries: int = 10,
+):
+    """Retry a function with exponential backoff on ANY error."""
+
+    def wrapper(*args, **kwargs):
+        num_retries = 0
+        delay = initial_delay
+
+        while True:
+            try:
+                return func(*args, **kwargs)
+
+            except Exception as e:
+                num_retries += 1
+
+                if num_retries > max_retries:
+                    raise Exception(
+                        f"Maximum retries ({max_retries}) exceeded. Last error: {e}"
+                    ) from e
+
+                # Exponential backoff with optional jitter
+                delay *= exponential_base * (1 + jitter * random.random())
+                time.sleep(delay)
+
+    return wrapper
 
 
 @dataclass
@@ -58,7 +92,7 @@ def process_custom_style(
     client: OpenAI, user_style: str, model: str = None
 ) -> ProcessedStyle:
     """Process user's custom style request with LLM."""
-    model = model or os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
+    model = model or os.getenv("LLM_MODEL", "openai/gpt-4o")
 
     try:
         response = client.chat.completions.create(
@@ -145,11 +179,21 @@ class ImageGenerator:
             )
         else:
             return self._generate_slides(
-                plan, style_name, processed_style, all_sections_md, figure_images, language
+                plan,
+                style_name,
+                processed_style,
+                all_sections_md,
+                figure_images,
+                language,
             )
 
     def _generate_poster(
-        self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images, language: str = "vietnamese"
+        self,
+        style_name,
+        processed_style: Optional[ProcessedStyle],
+        sections_md,
+        images,
+        language: str = "vietnamese",
     ) -> List[GeneratedImage]:
         """Generate 1 poster image."""
         prompt = self._build_poster_prompt(
@@ -403,6 +447,7 @@ class ImageGenerator:
                 used_ids.add(ref.figure_id)
         return [img for img in figure_images if img.get("figure_id") in used_ids]
 
+    @retry_with_exponential_backoff
     def _call_model(self, prompt: str, reference_images: List[dict]) -> tuple:
         """Call the image generation model."""
         content = [{"type": "text", "text": prompt}]

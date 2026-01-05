@@ -2,18 +2,24 @@
 Paper document processing
 Extract structured content from RAG results for paper documents
 """
-import re
+
 import asyncio
-from typing import Dict, Any, List, TypedDict, Set
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List, Set, TypedDict
 
-from .clean import clean_references
-from ..rag import RAGQueryResult
 from ..prompts.paper_extraction import EXTRACT_PROMPTS
+from ..rag import RAGQueryResult
+from .clean import clean_references
 
-
-SUMMARY_SECTIONS: List[str] = ["paper_info", "motivation", "solution", "results", "contributions"]
+SUMMARY_SECTIONS: List[str] = [
+    "paper_info",
+    "motivation",
+    "solution",
+    "results",
+    "contributions",
+]
 
 # Sections that need LLM for structured extraction
 LLM_SECTIONS: Set[str] = {"motivation", "solution", "results", "contributions"}
@@ -41,6 +47,7 @@ SECTION_SUPPLEMENTS: Dict[str, List[tuple]] = {
 
 class RAGResults(TypedDict, total=False):
     """RAG query results organized by section."""
+
     paper_info: List[RAGQueryResult]
     figures: List[RAGQueryResult]
     tables: List[RAGQueryResult]
@@ -54,6 +61,7 @@ class RAGResults(TypedDict, total=False):
 @dataclass
 class PaperContent:
     """Extracted paper content."""
+
     paper_info: str = ""
     figures: str = ""
     tables: str = ""
@@ -64,23 +72,23 @@ class PaperContent:
     contributions: str = ""
     # Raw data
     raw_rag_results: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_summary(
-        self, 
+        self,
         include_titles: bool = True,
         section_titles: Dict[str, str] | None = None,
     ) -> str:
         """Generate the final summary by combining relevant sections.
-        
+
         Args:
             include_titles: Whether to include section titles in the output.
             section_titles: Custom section titles. If None, uses SECTION_TITLES.
-        
-        Note: figures, tables, equations are NOT included directly as they 
+
+        Note: figures, tables, equations are NOT included directly as they
         are already added as supplements to solution and results sections.
         """
         titles = section_titles if section_titles is not None else SECTION_TITLES
-        
+
         parts = []
         for section in SUMMARY_SECTIONS:
             content = getattr(self, section, "")
@@ -90,18 +98,18 @@ class PaperContent:
                     parts.append(f"{title}\n\n{content}")
                 else:
                     parts.append(content)
-        
+
         return "\n\n---\n\n".join(parts)
 
 
 def merge_answers(
-    rag_results: RAGResults, 
-    section: str, 
+    rag_results: RAGResults,
+    section: str,
     clean_refs: bool = True,
     include_supplements: bool = False,
 ) -> str:
     """Merge all RAG answers for a section.
-    
+
     Args:
         rag_results: RAG query results
         section: Section name to merge
@@ -109,7 +117,7 @@ def merge_answers(
         include_supplements: Whether to include supplementary sections (figures/tables/equations)
     """
     items = rag_results.get(section, [])
-    
+
     texts = []
     for item in items:
         answer = item.get("answer", "")
@@ -117,24 +125,26 @@ def merge_answers(
             if clean_refs:
                 answer = clean_references(answer)
             texts.append(answer)
-    
+
     main_content = "\n\n---\n\n".join(texts)
-    
+
     # Optionally include supplements
     if not include_supplements:
         return main_content
-    
+
     supplements = SECTION_SUPPLEMENTS.get(section, [])
     if not supplements:
         return main_content
-    
+
     parts = [main_content] if main_content else []
     for sup_section, description in supplements:
         # Recursive call without supplements to avoid infinite loop
-        sup_content = merge_answers(rag_results, sup_section, clean_refs=clean_refs, include_supplements=False)
+        sup_content = merge_answers(
+            rag_results, sup_section, clean_refs=clean_refs, include_supplements=False
+        )
         if sup_content:
             parts.append(f"{description}\n\n{sup_content}")
-    
+
     return "\n\n---\n\n".join(parts)
 
 
@@ -142,10 +152,10 @@ async def _extract_section(
     content: str,
     section: str,
     llm_client,
-    model: str = "gpt-4o-mini",
+    model: str = "openai/gpt-4o",
 ) -> str:
     """Extract structured content for a single section using LLM.
-    
+
     Args:
         content: Merged RAG content for the section
         section: Section name (must be in EXTRACT_PROMPTS)
@@ -154,13 +164,13 @@ async def _extract_section(
     """
     if not content or len(content) < 100:
         return ""
-    
+
     prompt_template = EXTRACT_PROMPTS.get(section)
     if not prompt_template:
         return ""
-    
+
     prompt = prompt_template.format(content=content)
-    
+
     # Run sync LLM call in executor for async compatibility
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
@@ -169,23 +179,23 @@ async def _extract_section(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             max_tokens=4000,
-        )
+        ),
     )
-    
+
     return response.choices[0].message.content or ""
 
 
 async def extract_paper(
     rag_results: RAGResults,
     llm_client,
-    model: str = "gpt-4o-mini",
+    model: str = "openai/gpt-4o",
     clean_refs: bool = True,
     parallel: bool = True,
     max_concurrency: int = 5,
 ) -> PaperContent:
     """
     Extract structured content from RAG results for a paper.
-    
+
     Args:
         rag_results: RAG query results
         llm_client: OpenAI client
@@ -195,12 +205,14 @@ async def extract_paper(
         max_concurrency: Maximum concurrent LLM calls (only used when parallel=True)
     """
     result = PaperContent(raw_rag_results=rag_results)
-    
+
     # Prepare sections that need LLM processing
     llm_tasks = {}
     for section in SUMMARY_SECTIONS:
         if section in LLM_SECTIONS:
-            merged = merge_answers(rag_results, section, clean_refs=clean_refs, include_supplements=True)
+            merged = merge_answers(
+                rag_results, section, clean_refs=clean_refs, include_supplements=True
+            )
             if merged:
                 llm_tasks[section] = merged
         else:
@@ -208,18 +220,20 @@ async def extract_paper(
             merged = merge_answers(rag_results, section, clean_refs=clean_refs)
             if merged:
                 setattr(result, section, merged)
-    
+
     # Process LLM sections
     if llm_tasks:
         if parallel:
             # Parallel processing with semaphore for rate limiting
             semaphore = asyncio.Semaphore(max_concurrency)
-            
+
             async def extract_with_semaphore(section: str, content: str) -> tuple:
                 async with semaphore:
-                    extracted = await _extract_section(content, section, llm_client, model)
+                    extracted = await _extract_section(
+                        content, section, llm_client, model
+                    )
                     return section, extracted
-            
+
             tasks = [extract_with_semaphore(s, c) for s, c in llm_tasks.items()]
             results = await asyncio.gather(*tasks)
             for section, extracted in results:
@@ -231,28 +245,28 @@ async def extract_paper(
                 extracted = await _extract_section(content, section, llm_client, model)
                 if extracted:
                     setattr(result, section, extracted)
-    
+
     return result
 
 
 def _extract_text_from_markdown(md_path: str, max_chars: int = 3000) -> str:
     """
     Extract plain text from markdown file, removing image links.
-    
+
     Args:
         md_path: Path to markdown file
         max_chars: Maximum characters to read (metadata is usually at the beginning)
     """
     try:
-        with open(md_path, 'r', encoding='utf-8') as f:
+        with open(md_path, "r", encoding="utf-8") as f:
             content = f.read(max_chars)
-        
+
         # Remove image links: ![](images/xxx.jpg) or ![alt](path)
-        content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
-        
+        content = re.sub(r"!\[.*?\]\(.*?\)", "", content)
+
         # Remove excessive blank lines
-        content = re.sub(r'\n{3,}', '\n\n', content)
-        
+        content = re.sub(r"\n{3,}", "\n\n", content)
+
         return content.strip()
     except Exception as e:
         print(f"[Warning] Failed to read markdown {md_path}: {e}")
@@ -286,12 +300,12 @@ def _build_multi_file_prompt(file_headers: List[Dict]) -> str:
         documents_text += f"""
 
 ━━━━━━━━━━━━━━━━━━━━━━
-Document {header['index']}: {header['filename']}
+Document {header["index"]}: {header["filename"]}
 ━━━━━━━━━━━━━━━━━━━━━━
 
-{header['text']}
+{header["text"]}
 """
-    
+
     return f"""You are given {len(file_headers)} different document files. Each file is an independent paper.
 Extract the metadata for each paper separately.
 
@@ -300,11 +314,11 @@ Documents:
 
 Output Format:
 
-**Paper 1** (from Document 1: {file_headers[0]['filename']})
+**Paper 1** (from Document 1: {file_headers[0]["filename"]})
 Title: [exact title]
 Authors: [Author1 (Institution1), Author2 (Institution2), ...]
 
-**Paper 2** (from Document 2: {file_headers[1]['filename'] if len(file_headers) > 1 else '...'})
+**Paper 2** (from Document 2: {file_headers[1]["filename"] if len(file_headers) > 1 else "..."})
 Title: [exact title]
 Authors: [Author1 (Institution1), Author2 (Institution2), ...]
 
@@ -318,7 +332,7 @@ If information is missing or unclear for a paper, omit that field.
 async def extract_paper_metadata_from_markdown(
     markdown_paths: List[str],
     llm_client,
-    model: str = "gpt-4o-mini",
+    model: str = "openai/gpt-4o",
     max_chars_per_file: int = 3000,
 ) -> str:
     """
@@ -327,30 +341,26 @@ async def extract_paper_metadata_from_markdown(
     """
     if not markdown_paths:
         return "Unable to extract paper metadata: No markdown files found."
-    
+
     # Read beginning section from each markdown file separately
     file_headers = []
     for i, md_path in enumerate(markdown_paths, 1):
         text = _extract_text_from_markdown(md_path, max_chars=max_chars_per_file)
         if text:
             file_name = Path(md_path).stem
-            file_headers.append({
-                "index": i,
-                "filename": file_name,
-                "text": text
-            })
-    
+            file_headers.append({"index": i, "filename": file_name, "text": text})
+
     if not file_headers:
         return "Unable to extract paper metadata: All markdown files are empty."
-    
+
     # Choose prompt strategy based on number of files
     if len(file_headers) == 1:
         # Single file: simple direct prompt
-        prompt = _build_single_file_prompt(file_headers[0]['text'])
+        prompt = _build_single_file_prompt(file_headers[0]["text"])
     else:
         # Multiple files: complex multi-scenario prompt
         prompt = _build_multi_file_prompt(file_headers)
-    
+
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None,
@@ -359,9 +369,8 @@ async def extract_paper_metadata_from_markdown(
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1500,
             temperature=0.1,  # Low temperature for accuracy
-        )
+        ),
     )
-    
     result = response.choices[0].message.content or ""
-    
+
     return result

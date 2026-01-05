@@ -5,7 +5,10 @@ FastAPI server for Paper2Slides
 import asyncio
 import json
 import logging
+import re
 import sys
+import unicodedata
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import List, Optional
@@ -45,6 +48,80 @@ UPLOAD_DIR = PROJECT_ROOT / "sources" / "uploads"
 OUTPUT_DIR = PROJECT_ROOT / "outputs"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
+
+
+def sanitize_filename(filename: str, max_bytes: int = 200) -> str:
+    """
+    Sanitize a filename for safe filesystem storage.
+
+    Handles:
+    1. URL-decode percent-encoded characters (e.g., %C6%B0 → ư)
+    2. Normalize unicode to NFC (composed form)
+    3. Remove/replace dangerous filesystem characters
+    4. Truncate to max_bytes while preserving extension
+    5. Fall back to UUID if filename is still problematic
+
+    Args:
+        filename: The original filename (may be percent-encoded)
+        max_bytes: Maximum length in bytes for the filename
+
+    Returns:
+        A safe filename that can be stored on the filesystem
+    """
+    if not filename:
+        return str(uuid.uuid4()) + ".bin"
+
+    # URL-decode the filename (handles %C6%B0 → ư, %20 → space, etc.)
+    decoded = urllib.parse.unquote(filename)
+
+    # Normalize unicode to NFC (composed form) for consistent handling
+    decoded = unicodedata.normalize("NFC", decoded)
+
+    # Replace dangerous filesystem characters with underscore
+    decoded = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", decoded)
+
+    # Remove leading/trailing whitespace and dots
+    decoded = decoded.strip().strip(".")
+
+    if not decoded:
+        return str(uuid.uuid4()) + ".bin"
+
+    # Separate extension from name
+    if "." in decoded:
+        name, ext = decoded.rsplit(".", 1)
+        ext = "." + ext[:10]  # Limit extension length to 10 chars
+    else:
+        name, ext = decoded, ""
+
+    # Encode to bytes to check actual length
+    name_bytes = name.encode("utf-8")
+    ext_bytes = ext.encode("utf-8")
+
+    # Calculate max name length (reserve space for extension)
+    max_name_bytes = max_bytes - len(ext_bytes)
+
+    # Truncate name if too long (careful with multi-byte UTF-8 chars)
+    if len(name_bytes) > max_name_bytes:
+        truncated = name_bytes[:max_name_bytes]
+        # Decode back, handling potential partial multi-byte characters
+        while truncated:
+            try:
+                name = truncated.decode("utf-8")
+                break
+            except UnicodeDecodeError:
+                truncated = truncated[:-1]
+        else:
+            # Fallback to UUID if decoding fails completely
+            name = str(uuid.uuid4())
+
+    result = name + ext
+
+    # Final safety check
+    if not result or len(result.encode("utf-8")) > 255:
+        result = str(uuid.uuid4()) + ext
+
+    return result
+
 
 app = FastAPI(title="Paper2Slides API", version="1.0.0")
 
@@ -252,14 +329,19 @@ async def chat(
             # Save newly uploaded files
             for file in files:
                 if file.filename:
-                    file_path = session_dir / file.filename
+                    # Sanitize filename to prevent "File name too long" errors
+                    # (Vietnamese UTF-8 chars get percent-encoded in HTTP headers,
+                    # expanding each char from 2-3 bytes to 6-9 bytes)
+                    safe_filename = sanitize_filename(file.filename)
+                    file_path = session_dir / safe_filename
                     CHUNK_SIZE = 1024 * 1024  # 1MB chunks
                     with open(file_path, "wb") as buffer:
                         while chunk := file.file.read(CHUNK_SIZE):
                             buffer.write(chunk)
                     saved_files.append(
                         {
-                            "filename": file.filename,
+                            "filename": safe_filename,  # Use safe filename for filesystem
+                            "original_filename": urllib.parse.unquote(file.filename),  # Keep original for display
                             "path": str(file_path),
                             "size": file_path.stat().st_size,
                         }
@@ -274,7 +356,8 @@ async def chat(
         print(f"New Request (Session: {session_id[:8]})")
         print(f"Files: {len(saved_files)} file(s)")
         for f in saved_files:
-            print(f"  - {f['filename']} ({f['size']} bytes)")
+            display_name = f.get("original_filename", f["filename"])
+            print(f"  - {display_name} ({f['size']} bytes)")
         print(f"Config: {output_type} | {style} | {content} | {language}")
         if length:
             print(f"  Length: {length}")
@@ -290,7 +373,8 @@ async def chat(
             "session_id": session_id,
             "uploaded_files": [
                 {
-                    "name": f["filename"],
+                    # Use original filename for display, safe filename for URL
+                    "name": f.get("original_filename", f["filename"]),
                     "size": f["size"],
                     "url": f"/uploads/{session_id}/{f['filename']}",
                 }
@@ -320,6 +404,8 @@ async def chat(
         # Return immediately so frontend can start polling
         return JSONResponse(content=response_data)
 
+    except HTTPException:
+        raise  # Re-raise HTTPException with original status code (e.g., 409)
     except Exception as e:
         print(f"Error processing request: {str(e)}")
         raise HTTPException(
@@ -838,9 +924,7 @@ def extract_slide_content(session_id: str) -> dict:
     # Find the session directory
     session_dir = UPLOAD_DIR / session_id
     if not session_dir.exists():
-        raise HTTPException(
-            status_code=404, detail=f"Session {session_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
     # Get PDF files from session
     pdf_files = list(session_dir.glob("*.pdf"))
@@ -877,7 +961,9 @@ def extract_slide_content(session_id: str) -> dict:
                                 config_dir = plan_file.parent
                                 # Find the timestamp directory (where images are)
                                 for d in config_dir.iterdir():
-                                    if d.is_dir() and not d.name.startswith("checkpoint"):
+                                    if d.is_dir() and not d.name.startswith(
+                                        "checkpoint"
+                                    ):
                                         timestamp_dir = d
                                         break
                                 break
@@ -891,7 +977,7 @@ def extract_slide_content(session_id: str) -> dict:
     if not checkpoint_plan_path or not checkpoint_plan_path.exists():
         raise HTTPException(
             status_code=404,
-            detail=f"Checkpoint plan not found for session {session_id}. Generation may not be complete."
+            detail=f"Checkpoint plan not found for session {session_id}. Generation may not be complete.",
         )
 
     # Load checkpoint_plan.json
@@ -900,24 +986,28 @@ def extract_slide_content(session_id: str) -> dict:
             plan_data = json.load(f)
     except Exception as e:
         raise HTTPException(
-            status_code=500,
-            detail=f"Error reading checkpoint plan: {str(e)}"
+            status_code=500, detail=f"Error reading checkpoint plan: {str(e)}"
         )
 
-    # Extract sections
-    sections = plan_data.get("sections", [])
+    # Extract sections from nested "plan" object
+    plan = plan_data.get("plan", {})
+    sections = plan.get("sections", [])
     tables_index = plan_data.get("tables_index", {})
     figures_index = plan_data.get("figures_index", {})
-    output_type = plan_data.get("output_type", "slides")
+    output_type = plan.get("output_type", "slides")
 
     # Find generated images in timestamp directory
     image_files = []
     if timestamp_dir and timestamp_dir.exists():
         # Sort image files by name (slide_01.png, slide_02.png, etc.)
-        image_files = sorted([
-            f for f in timestamp_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]
-        ])
+        image_files = sorted(
+            [
+                f
+                for f in timestamp_dir.iterdir()
+                if f.is_file()
+                and f.suffix.lower() in [".png", ".jpg", ".jpeg", ".webp"]
+            ]
+        )
 
     # Build structured response
     slides = []
@@ -937,13 +1027,15 @@ def extract_slide_content(session_id: str) -> dict:
             table_id = table_ref.get("table_id")
             if table_id in tables_index:
                 table_info = tables_index[table_id]
-                tables.append({
-                    "id": table_info.get("id"),
-                    "caption": table_info.get("caption"),
-                    "html": table_info.get("html"),
-                    "extract": table_ref.get("extract", ""),
-                    "focus": table_ref.get("focus", "")
-                })
+                tables.append(
+                    {
+                        "id": table_info.get("id"),
+                        "caption": table_info.get("caption"),
+                        "html": table_info.get("html"),
+                        "extract": table_ref.get("extract", ""),
+                        "focus": table_ref.get("focus", ""),
+                    }
+                )
 
         # Resolve figure references
         figures = []
@@ -951,11 +1043,13 @@ def extract_slide_content(session_id: str) -> dict:
             figure_id = figure_ref.get("figure_id")
             if figure_id in figures_index:
                 figure_info = figures_index[figure_id]
-                figures.append({
-                    "id": figure_info.get("id"),
-                    "caption": figure_info.get("caption"),
-                    "focus": figure_ref.get("focus", "")
-                })
+                figures.append(
+                    {
+                        "id": figure_info.get("id"),
+                        "caption": figure_info.get("caption"),
+                        "focus": figure_ref.get("focus", ""),
+                    }
+                )
 
         # Build slide object
         slide = {
@@ -966,7 +1060,7 @@ def extract_slide_content(session_id: str) -> dict:
             "content": section.get("content"),
             "image_url": image_url,
             "tables": tables,
-            "figures": figures
+            "figures": figures,
         }
 
         slides.append(slide)
@@ -975,7 +1069,7 @@ def extract_slide_content(session_id: str) -> dict:
         "session_id": session_id,
         "output_type": output_type,
         "total_slides": len(slides),
-        "slides": slides
+        "slides": slides,
     }
 
 
@@ -1005,7 +1099,7 @@ async def get_slide_content(session_id: str):
     except Exception as e:
         logger.error(
             f"Error extracting slide content for session {session_id}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=str(e))
 

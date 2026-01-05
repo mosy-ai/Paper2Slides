@@ -11,7 +11,7 @@ This script tests the complete workflow:
 Usage:
     python test_api.py
 """
-
+import os
 import json
 import time
 from pathlib import Path
@@ -20,7 +20,7 @@ import requests
 
 # Configuration
 API_BASE = "http://localhost:8152"
-PDF_PATH = "/home/aiden/folder-em-linh-xin-dung-xoa/Paper2Slides/data/Present-Simple-YEnglishtube.pdf"
+PDF_PATH = "data/Present-Simple-YEnglishtube.pdf"
 
 # Generation settings
 CONFIG = {
@@ -29,7 +29,7 @@ CONFIG = {
     "style": "academic",  # 'academic', 'doraemon', or custom description
     "length": "medium",  # 'short', 'medium', 'long' (for slides)
     "language": "vietnamese",  # 'vietnamese' or 'english'
-    "fast_mode": "false",  # 'true' or 'false'
+    "fast_mode": "true",  # 'true' or 'false'
 }
 
 
@@ -55,12 +55,12 @@ def print_header(text):
 
 def print_info(text):
     """Print info message."""
-    print(f"{Colors.OKBLUE}ℹ {text}{Colors.ENDC}")
+    print(f"{Colors.OKBLUE}ℹ {text}{Colors.ENDC}", flush=True)
 
 
 def print_success(text):
     """Print success message."""
-    print(f"{Colors.OKGREEN}✓ {text}{Colors.ENDC}")
+    print(f"{Colors.OKGREEN}✓ {text}{Colors.ENDC}", flush=True)
 
 
 def print_warning(text):
@@ -96,8 +96,9 @@ def upload_pdf(pdf_path):
     print_info(f"Uploading: {Path(pdf_path).name}")
     print_info(f"Configuration:")
     for key, value in CONFIG.items():
-        print(f"  - {key}: {value}")
+        print(f"  - {key}: {value}", flush=True)
 
+    print_info("Sending request to server...")
     try:
         with open(pdf_path, "rb") as f:
             response = requests.post(
@@ -107,6 +108,7 @@ def upload_pdf(pdf_path):
                 timeout=600,
             )
 
+        print_info(f"Response received: {response.status_code}")
         response.raise_for_status()
         result = response.json()
 
@@ -125,15 +127,20 @@ def upload_pdf(pdf_path):
         return None
 
 
-def poll_status(session_id, poll_interval=5, max_wait=1800):
+def poll_status(session_id, poll_interval=30, max_wait=1800):
     """Poll for generation status until completion."""
     print_header("STEP 2: Monitor Generation Progress")
 
     start_time = time.time()
     last_stages = {}
+    attempt = 0
 
     while True:
         try:
+            attempt += 1
+            elapsed = time.time() - start_time
+            print_info(f"Polling attempt #{attempt} (elapsed: {elapsed:.1f}s)")
+
             response = requests.get(f"{API_BASE}/api/status/{session_id}", timeout=10)
             response.raise_for_status()
             status_data = response.json()
@@ -141,13 +148,38 @@ def poll_status(session_id, poll_interval=5, max_wait=1800):
             overall_status = status_data.get("status")
             stages = status_data.get("stages", {})
 
-            # Print stages only if they changed
-            if stages != last_stages:
-                print(f"\n{Colors.BOLD}Status: {overall_status.upper()}{Colors.ENDC}")
+            # Always print current status
+            stages_changed = stages != last_stages
+            if stages_changed:
+                print(
+                    f"\n{Colors.BOLD}Status: {overall_status.upper()}{Colors.ENDC}",
+                    flush=True,
+                )
                 for stage_name in ["rag", "summary", "plan", "generate"]:
                     stage_status = stages.get(stage_name, "pending")
                     print_stage(stage_name, stage_status)
                 last_stages = stages.copy()
+            else:
+                # Show compact status on same line
+                running_stage = next(
+                    (
+                        s
+                        for s in ["rag", "summary", "plan", "generate"]
+                        if stages.get(s) == "running"
+                    ),
+                    None,
+                )
+                if running_stage:
+                    print(
+                        f"  {Colors.OKCYAN}⏳ {running_stage.upper()} in progress...{Colors.ENDC}",
+                        flush=True,
+                    )
+                else:
+                    # Show overall status if no running stage
+                    print(
+                        f"  {Colors.WARNING}⏳ Status: {overall_status}{Colors.ENDC}",
+                        flush=True,
+                    )
 
             # Check if completed or failed
             if overall_status == "completed":
@@ -271,7 +303,8 @@ def get_slide_content(session_id, save_to_file=True):
 
         # Save to file
         if save_to_file:
-            output_file = f"slide_content_{session_id[:8]}.json"
+            output_file = f"slide_content/slide_content_{session_id[:8]}.json"
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
             with open(output_file, "w", encoding="utf-8") as f:
                 json.dump(content, f, indent=2, ensure_ascii=False)
             print_success(f"Saved full content to: {output_file}")
