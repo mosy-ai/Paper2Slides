@@ -225,6 +225,7 @@ class ImageGenerator:
                 figure_images,
                 max_workers,
                 save_callback,
+                language=language,
             )
 
     def _generate_poster(
@@ -255,6 +256,7 @@ class ImageGenerator:
         figure_images,
         max_workers: int,
         save_callback=None,
+        language: str = "vietnamese",
     ) -> List[GeneratedImage]:
         """Generate N slide images (slides 1-2 sequential, 3+ parallel)."""
         results = []

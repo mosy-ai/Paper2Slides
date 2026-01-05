@@ -126,7 +126,7 @@ const ConversationList = ({
               key={conv.id}
               className={`group relative mx-2 rounded-xl cursor-pointer transition-all duration-300 ease-in-out ${
                 currentConversationId === conv.id
-                  ? 'bg-gradient-to-r from-purple-100 to-pink-100 dark:from-purple-900/40 dark:to-pink-900/40 border-2 border-purple-300 dark:border-purple-600 shadow-md'
+                  ? 'bg-gray-100 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 shadow-md'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800 border-2 border-transparent'
               }`}
               onClick={() => onSelectConversation(conv.id)}
@@ -135,11 +135,11 @@ const ConversationList = ({
                 {/* Icon - Always show conversation icon */}
                 <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
                   currentConversationId === conv.id
-                    ? 'bg-gradient-to-br from-purple-500 to-pink-500'
+                    ? 'bg-gray-900 dark:bg-white'
                     : 'bg-gray-200 dark:bg-gray-700'
                 }`}>
                   <MessageSquare className={`w-4 h-4 ${
-                    currentConversationId === conv.id ? 'text-white' : 'text-gray-500 dark:text-gray-400'
+                    currentConversationId === conv.id ? 'text-white dark:text-gray-900' : 'text-gray-500 dark:text-gray-400'
                   }`} />
                 </div>
 
@@ -147,7 +147,7 @@ const ConversationList = ({
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm font-medium truncate ${
                     currentConversationId === conv.id
-                      ? 'text-purple-900 dark:text-purple-100'
+                      ? 'text-gray-900 dark:text-gray-100'
                       : 'text-gray-900 dark:text-gray-100'
                   }`}>
                     {getConversationTitle(conv)}
@@ -213,8 +213,8 @@ const ConversationList = ({
       <div className="flex-1 overflow-y-auto py-2" onClick={() => setShowMenuId(null)}>
         {conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-100 to-pink-100 dark:from-purple-900/30 dark:to-pink-900/30 flex items-center justify-center mb-4">
-              <MessageSquare className="w-8 h-8 text-purple-500 dark:text-purple-400" />
+            <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+              <MessageSquare className="w-8 h-8 text-gray-500 dark:text-gray-400" />
             </div>
             <h3 className="text-base font-medium text-gray-900 dark:text-gray-100 mb-2">
               No conversations yet
@@ -237,10 +237,10 @@ const ConversationList = ({
       <div className="p-3 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 flex-shrink-0">
         <button
           onClick={onNewConversation}
-          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium shadow-md hover:shadow-lg transition-all"
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium shadow-md hover:shadow-lg transition-all"
         >
           <Plus className="w-5 h-5" />
-          <span>New Conversation</span>
+          <span>Start New</span>
         </button>
       </div>
 

@@ -37,7 +37,7 @@ const SlidePreview = ({ slides }) => {
                   onClick={() => setCurrentSlide(index)}
                   className={`w-1.5 h-1.5 rounded-full transition-colors ${
                     index === currentSlide
-                      ? 'bg-purple-600 dark:bg-purple-500'
+                      ? 'bg-gray-900 dark:bg-white'
                       : 'bg-gray-300 dark:bg-gray-700'
                   }`}
                   title={`Go to slide ${index + 1}`}

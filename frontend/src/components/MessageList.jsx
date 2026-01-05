@@ -44,7 +44,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
       case 'completed':
         return <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
       case 'active':
-        return <Loader2 className="w-5 h-5 text-purple-600 dark:text-purple-400 animate-spin" />
+        return <Loader2 className="w-5 h-5 text-gray-600 dark:text-gray-400 animate-spin" />
       default:
         return <Circle className="w-5 h-5 text-gray-300 dark:text-gray-600" />
     }
@@ -112,15 +112,15 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             {/* Configuration Header - Only show if config exists */}
             {round.config && (
-              <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20">
+              <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800">
                 <div className="flex flex-wrap gap-2">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg text-xs">
                     <span className="text-blue-600 dark:text-blue-400 font-medium">Output:</span>
                     <span className="text-blue-700 dark:text-blue-300 capitalize">{round.config.output}</span>
                   </div>
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg text-xs">
-                    <span className="text-purple-600 dark:text-purple-400 font-medium">Style:</span>
-                    <span className="text-purple-700 dark:text-purple-300 capitalize">{round.config.style}</span>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs">
+                    <span className="text-gray-600 dark:text-gray-400 font-medium">Style:</span>
+                    <span className="text-gray-700 dark:text-gray-300 capitalize">{round.config.style}</span>
                   </div>
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg text-xs">
                     <span className="text-green-600 dark:text-green-400 font-medium">Content:</span>
@@ -202,10 +202,10 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                           return (
                             <div
                               key={fileIndex}
-                              className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-2 border-purple-200 dark:border-purple-700 rounded-xl shadow-sm relative group"
+                              className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl shadow-sm relative group"
                             >
-                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0 shadow-md">
-                                <FileText className="w-5 h-5 text-white" />
+                              <div className="w-10 h-10 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center flex-shrink-0 shadow-md">
+                                <FileText className="w-5 h-5 text-white dark:text-gray-900" />
                               </div>
                               <div className="flex-1 min-w-0 pr-8">
                                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -225,7 +225,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                                   console.log('Available uploadedFiles:', uploadedFiles)
                                   openPreview(fileWithUrl)
                                 }}
-                                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-purple-100 dark:hover:bg-purple-900/30 text-gray-600 dark:text-gray-300 transition-all opacity-0 group-hover:opacity-100 shadow-sm"
+                                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 transition-all opacity-0 group-hover:opacity-100 shadow-sm"
                                 title="Preview file"
                               >
                                 <Eye className="w-3.5 h-3.5" />
@@ -246,8 +246,8 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                 <div className="flex gap-4 items-start">
                   {/* Assistant Avatar */}
                   <div className="flex-shrink-0">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-md">
-                      <span className="text-white text-sm font-bold">P2S</span>
+                    <div className="w-10 h-10 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-md">
+                      <span className="text-white dark:text-gray-900 text-sm font-bold">AI</span>
                     </div>
                   </div>
 
@@ -272,7 +272,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                     {console.log('Assistant message data:', round.assistantMessage)}
 
                     {(round.assistantMessage.pptUrl || round.assistantMessage.posterUrl) && (
-                      <div className="mt-4 pt-4 border-t border-purple-100 dark:border-purple-800/30">
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         {/* Slides PDF Preview - Show PDF viewer */}
                         {round.assistantMessage.pptUrl && (
                           <div className="mb-4">
@@ -307,7 +307,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                             <a
                               href={round.assistantMessage.pptUrl}
                               download
-                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl transition-all text-sm font-medium shadow-lg hover:shadow-xl"
+                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-xl transition-all text-sm font-medium shadow-lg hover:shadow-xl"
                             >
                               <Download className="w-4 h-4" />
                               <span>Download PDF</span>
@@ -317,7 +317,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                             <a
                               href={round.assistantMessage.posterUrl}
                               download
-                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-xl transition-all text-sm font-medium shadow-lg hover:shadow-xl"
+                              className="inline-flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-xl transition-all text-sm font-medium shadow-lg hover:shadow-xl"
                             >
                               <Download className="w-4 h-4" />
                               <span>Download Poster</span>
@@ -338,29 +338,29 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
       {isLoading && currentWorkflow && currentWorkflow.conversationId === conversationId && (
         <div className="bg-white/50 dark:bg-gray-900/50">
           <div className="max-w-4xl mx-auto px-4 py-6">
-            <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/30 border-2 border-purple-200 dark:border-purple-700 rounded-2xl shadow-lg overflow-hidden">
+            <div className="bg-gray-50 dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-2xl shadow-lg overflow-hidden">
               {/* Workflow Header */}
-              <div className="px-6 py-4 bg-gradient-to-r from-purple-500 to-pink-500">
+              <div className="px-6 py-4 bg-gray-900 dark:bg-white">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  <div className="w-10 h-10 rounded-xl bg-white/20 dark:bg-gray-900/20 backdrop-blur-sm flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-white dark:text-gray-900 animate-spin" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-white font-semibold text-lg">
+                    <h3 className="text-white dark:text-gray-900 font-semibold text-lg">
                       {currentWorkflow.outputType === 'slides' ? 'Generating Slides' : 'Generating Poster'}
                     </h3>
-                    <p className="text-white/80 text-sm">
+                    <p className="text-white/80 dark:text-gray-600 text-sm">
                       Style: {currentWorkflow.style} • Content: {currentWorkflow.content}
                     </p>
                   </div>
                   {/* Cancel Button */}
                   <button
                     onClick={() => setShowCancelConfirm(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-xl transition-colors border border-white/30 hover:border-white/50"
+                    className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 dark:bg-gray-900/20 dark:hover:bg-gray-900/30 backdrop-blur-sm rounded-xl transition-colors border border-white/30 hover:border-white/50 dark:border-gray-900/30 dark:hover:border-gray-900/50"
                     title="Stop generation"
                   >
-                    <StopCircle className="w-4 h-4 text-white" />
-                    <span className="text-white text-sm font-medium">Stop</span>
+                    <StopCircle className="w-4 h-4 text-white dark:text-gray-900" />
+                    <span className="text-white dark:text-gray-900 text-sm font-medium">Stop</span>
                   </button>
                 </div>
               </div>
@@ -387,7 +387,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                       <div
                         className={`relative flex items-start gap-4 p-4 rounded-xl border-2 transition-all ${
                           isActive
-                            ? 'border-purple-300 dark:border-purple-600 bg-white dark:bg-gray-800 shadow-md'
+                            ? 'border-gray-400 dark:border-gray-500 bg-white dark:bg-gray-800 shadow-md'
                             : isCompleted
                             ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10'
                             : 'border-gray-200 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50'
@@ -400,7 +400,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                           <div
                             className={`text-base font-semibold ${
                               isActive
-                                ? 'text-purple-900 dark:text-purple-100'
+                                ? 'text-gray-900 dark:text-gray-100'
                                 : isCompleted
                                 ? 'text-green-900 dark:text-green-100'
                                 : 'text-gray-500 dark:text-gray-400'
@@ -416,11 +416,11 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                           {isActive && (
                             <div className="mt-2 flex items-center gap-2">
                               <div className="flex gap-1">
-                                <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce"></div>
-                                <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
-                                <div className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
+                                <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce"></div>
+                                <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></div>
+                                <div className="w-1.5 h-1.5 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></div>
                               </div>
-                              <span className="text-xs text-purple-600 dark:text-purple-400">In progress...</span>
+                              <span className="text-xs text-gray-600 dark:text-gray-400">In progress...</span>
                             </div>
                           )}
                         </div>
@@ -446,8 +446,8 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
           >
             {/* Modal Header */}
             <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center shadow-lg">
-                <FileText className="w-6 h-6 text-white" />
+              <div className="w-12 h-12 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-lg">
+                <FileText className="w-6 h-6 text-white dark:text-gray-900" />
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
@@ -469,8 +469,8 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                 />
               ) : (previewFile.url || previewFile.blobUrl) ? (
                 <div className="flex flex-col items-center justify-center h-[40vh] text-center">
-                  <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center mb-6 shadow-xl">
-                    <FileText className="w-14 h-14 text-white" />
+                  <div className="w-28 h-28 rounded-3xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                    <FileText className="w-14 h-14 text-white dark:text-gray-900" />
                   </div>
                   <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
                     {previewFile.name}
@@ -491,8 +491,8 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-[40vh] text-center">
-                  <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-purple-500 via-pink-500 to-purple-600 flex items-center justify-center mb-6 shadow-xl">
-                    <FileText className="w-14 h-14 text-white" />
+                  <div className="w-28 h-28 rounded-3xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                    <FileText className="w-14 h-14 text-white dark:text-gray-900" />
                   </div>
                   <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
                     {previewFile.name}
@@ -521,7 +521,7 @@ const MessageList = ({ messages, uploadedFiles, currentWorkflow, isLoading, onCa
             <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
               <button
                 onClick={closePreview}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium transition-all"
+                className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium transition-all"
               >
                 Close
               </button>

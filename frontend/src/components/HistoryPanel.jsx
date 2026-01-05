@@ -89,7 +89,7 @@ const HistoryPanel = ({ history, uploadedDocuments, onSelectFile, onSelectHistor
           onClick={() => setActiveTab('history')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center ${
             activeTab === 'history'
-              ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+              ? 'text-gray-900 dark:text-gray-100 border-b-2 border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-800'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           }`}
         >
@@ -99,7 +99,7 @@ const HistoryPanel = ({ history, uploadedDocuments, onSelectFile, onSelectHistor
           onClick={() => setActiveTab('documents')}
           className={`flex-1 px-4 py-3 text-sm font-medium transition-colors flex items-center justify-center ${
             activeTab === 'documents'
-              ? 'text-purple-600 dark:text-purple-400 border-b-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+              ? 'text-gray-900 dark:text-gray-100 border-b-2 border-gray-900 dark:border-white bg-gray-100 dark:bg-gray-800'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
           }`}
         >
@@ -130,7 +130,7 @@ const HistoryPanel = ({ history, uploadedDocuments, onSelectFile, onSelectHistor
                           {item.outputType === 'slides' || item.outputType === 'ppt' ? (
                             <Presentation className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                           ) : (
-                            <ImageIcon className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+                            <ImageIcon className="w-4 h-4 text-gray-600 dark:text-gray-400 flex-shrink-0 mt-0.5" />
                           )}
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">

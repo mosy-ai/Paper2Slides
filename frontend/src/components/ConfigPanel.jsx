@@ -104,22 +104,22 @@ const ConfigPanel = ({
                         onClick={() => handleOutputSelect("slides")}
                         className={`relative flex-1 max-w-xs p-6 rounded-2xl border-2 transition-all ${
                             output === "slides"
-                                ? "border-purple-400 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 shadow-lg"
-                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600"
+                                ? "border-gray-400 bg-gray-50 dark:bg-gray-800 shadow-lg"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
                         }`}
                     >
                         <div className="flex flex-col items-center gap-3">
                             <div
                                 className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
                                     output === "slides"
-                                        ? "bg-gradient-to-br from-purple-500 to-pink-500 shadow-md"
+                                        ? "bg-gray-900 dark:bg-white shadow-md"
                                         : "bg-gray-100 dark:bg-gray-700"
                                 }`}
                             >
                                 <FileText
                                     className={`w-8 h-8 ${
                                         output === "slides"
-                                            ? "text-white"
+                                            ? "text-white dark:text-gray-900"
                                             : "text-gray-400"
                                     }`}
                                 />
@@ -128,7 +128,7 @@ const ConfigPanel = ({
                                 <h3
                                     className={`text-lg font-semibold ${
                                         output === "slides"
-                                            ? "text-purple-900 dark:text-purple-100"
+                                            ? "text-gray-900 dark:text-gray-100"
                                             : "text-gray-900 dark:text-gray-100"
                                     }`}
                                 >
@@ -140,8 +140,8 @@ const ConfigPanel = ({
                             </div>
                             {output === "slides" && (
                                 <div className="absolute top-3 right-3">
-                                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                                        <Check className="w-4 h-4 text-white" />
+                                    <div className="w-6 h-6 rounded-full bg-gray-900 dark:bg-white flex items-center justify-center">
+                                        <Check className="w-4 h-4 text-white dark:text-gray-900" />
                                     </div>
                                 </div>
                             )}
@@ -153,22 +153,22 @@ const ConfigPanel = ({
                         onClick={() => handleOutputSelect("poster")}
                         className={`relative flex-1 max-w-xs p-6 rounded-2xl border-2 transition-all ${
                             output === "poster"
-                                ? "border-purple-400 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 shadow-lg"
-                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600"
+                                ? "border-gray-400 bg-gray-50 dark:bg-gray-800 shadow-lg"
+                                : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
                         }`}
                     >
                         <div className="flex flex-col items-center gap-3">
                             <div
                                 className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
                                     output === "poster"
-                                        ? "bg-gradient-to-br from-purple-500 to-pink-500 shadow-md"
+                                        ? "bg-gray-900 dark:bg-white shadow-md"
                                         : "bg-gray-100 dark:bg-gray-700"
                                 }`}
                             >
                                 <Image
                                     className={`w-8 h-8 ${
                                         output === "poster"
-                                            ? "text-white"
+                                            ? "text-white dark:text-gray-900"
                                             : "text-gray-400"
                                     }`}
                                 />
@@ -177,7 +177,7 @@ const ConfigPanel = ({
                                 <h3
                                     className={`text-lg font-semibold ${
                                         output === "poster"
-                                            ? "text-purple-900 dark:text-purple-100"
+                                            ? "text-gray-900 dark:text-gray-100"
                                             : "text-gray-900 dark:text-gray-100"
                                     }`}
                                 >
@@ -189,8 +189,8 @@ const ConfigPanel = ({
                             </div>
                             {output === "poster" && (
                                 <div className="absolute top-3 right-3">
-                                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                                        <Check className="w-4 h-4 text-white" />
+                                    <div className="w-6 h-6 rounded-full bg-gray-900 dark:bg-white flex items-center justify-center">
+                                        <Check className="w-4 h-4 text-white dark:text-gray-900" />
                                     </div>
                                 </div>
                             )}
@@ -210,21 +210,21 @@ const ConfigPanel = ({
                             }}
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all ${
                                 output === "slides"
-                                    ? "border-purple-400 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 shadow-md"
-                                    : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600"
+                                    ? "border-gray-400 bg-gray-50 dark:bg-gray-800 shadow-md"
+                                    : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
                             }`}
                         >
                             <div
                                 className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                                     output === "slides"
-                                        ? "bg-gradient-to-br from-purple-500 to-pink-500"
+                                        ? "bg-gray-900 dark:bg-white"
                                         : "bg-gray-100 dark:bg-gray-700"
                                 }`}
                             >
                                 <FileText
                                     className={`w-4 h-4 ${
                                         output === "slides"
-                                            ? "text-white"
+                                            ? "text-white dark:text-gray-900"
                                             : "text-gray-400"
                                     }`}
                                 />
@@ -233,7 +233,7 @@ const ConfigPanel = ({
                                 <span
                                     className={`text-sm font-semibold ${
                                         output === "slides"
-                                            ? "text-purple-900 dark:text-purple-100"
+                                            ? "text-gray-900 dark:text-gray-100"
                                             : "text-gray-900 dark:text-gray-100"
                                     }`}
                                 >
@@ -245,7 +245,7 @@ const ConfigPanel = ({
                             </div>
                             {output === "slides" && (
                                 <div className="ml-1">
-                                    <Check className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                    <Check className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                                 </div>
                             )}
                         </button>
@@ -258,21 +258,21 @@ const ConfigPanel = ({
                             }}
                             className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 transition-all ${
                                 output === "poster"
-                                    ? "border-purple-400 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 shadow-md"
-                                    : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-purple-300 dark:hover:border-purple-600"
+                                    ? "border-gray-400 bg-gray-50 dark:bg-gray-800 shadow-md"
+                                    : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-400 dark:hover:border-gray-500"
                             }`}
                         >
                             <div
                                 className={`w-8 h-8 rounded-lg flex items-center justify-center ${
                                     output === "poster"
-                                        ? "bg-gradient-to-br from-purple-500 to-pink-500"
+                                        ? "bg-gray-900 dark:bg-white"
                                         : "bg-gray-100 dark:bg-gray-700"
                                 }`}
                             >
                                 <Image
                                     className={`w-4 h-4 ${
                                         output === "poster"
-                                            ? "text-white"
+                                            ? "text-white dark:text-gray-900"
                                             : "text-gray-400"
                                     }`}
                                 />
@@ -281,7 +281,7 @@ const ConfigPanel = ({
                                 <span
                                     className={`text-sm font-semibold ${
                                         output === "poster"
-                                            ? "text-purple-900 dark:text-purple-100"
+                                            ? "text-gray-900 dark:text-gray-100"
                                             : "text-gray-900 dark:text-gray-100"
                                     }`}
                                 >
@@ -293,7 +293,7 @@ const ConfigPanel = ({
                             </div>
                             {output === "poster" && (
                                 <div className="ml-1">
-                                    <Check className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                                    <Check className="w-4 h-4 text-gray-600 dark:text-gray-400" />
                                 </div>
                             )}
                         </button>
@@ -305,7 +305,7 @@ const ConfigPanel = ({
                             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all shadow-md hover:shadow-lg disabled:cursor-not-allowed whitespace-nowrap ml-auto ${
                                 isLoading
                                     ? "bg-gray-200 dark:bg-gray-800 text-gray-400"
-                                    : "bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                                    : "bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900"
                             }`}
                         >
                             {isLoading ? (
@@ -457,7 +457,7 @@ const ConfigPanel = ({
                                             value={customStyle}
                                             onChange={handleCustomStyleChange}
                                             placeholder="Describe your custom style..."
-                                            className="w-full px-3 py-2 text-sm border-2 border-purple-200 dark:border-purple-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-purple-400 resize-none"
+                                            className="w-full px-3 py-2 text-sm border-2 border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400 resize-none"
                                             rows={2}
                                         />
                                     </div>
@@ -503,7 +503,7 @@ const ConfigPanel = ({
                         <div className="flex justify-end gap-3 mt-6">
                             <button
                                 onClick={() => setShowConfigModal(false)}
-                                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium transition-all shadow-md hover:shadow-lg"
+                                className="px-6 py-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium transition-all shadow-md hover:shadow-lg"
                             >
                                 Done
                             </button>

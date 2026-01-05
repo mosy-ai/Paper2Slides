@@ -47,7 +47,7 @@ const FileUpload = ({ onFilesSelected, disabled, customButton }) => {
           type="button"
           onClick={handleFileSelect}
           disabled={disabled}
-          className="p-2 text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           title="Attach files (PDF, DOC, DOCX, MD)"
         >
           <Paperclip className="w-5 h-5" />

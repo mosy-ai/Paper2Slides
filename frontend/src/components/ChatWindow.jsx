@@ -1223,7 +1223,7 @@ const ChatWindow = () => {
     };
 
     return (
-        <div className="flex h-full w-full bg-gradient-to-br from-purple-50 via-pink-50 to-purple-100 dark:bg-gradient-to-br dark:from-purple-900/20 dark:via-pink-900/20 dark:to-purple-900/30 p-4 gap-4">
+        <div className="flex h-full w-full bg-gray-50 dark:bg-gray-950 p-4 gap-4">
             {/* Left Panel - Conversation List */}
             {showLeftPanel && (
                 <div className="w-80 flex-shrink-0">
@@ -1247,20 +1247,20 @@ const ChatWindow = () => {
                         {!showLeftPanel && (
                             <button
                                 onClick={() => setShowLeftPanel(true)}
-                                className="p-2 rounded-lg hover:bg-purple-50 dark:hover:bg-gray-800 transition-colors"
+                                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                                 title="Show sidebar"
                             >
                                 <PanelLeftOpen className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                             </button>
                         )}
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-                            <span className="text-white text-sm font-bold">
-                                P2S
+                        <div className="w-10 h-10 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-lg">
+                            <span className="text-white dark:text-gray-900 text-sm font-bold">
+                                AI
                             </span>
                         </div>
                         <div>
                             <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                Paper2Slides
+                                Document Generator
                             </h1>
                             {currentConversation && (
                                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
@@ -1272,9 +1272,9 @@ const ChatWindow = () => {
 
                     {/* Current conversation files indicator */}
                     {conversationFiles.length > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                            <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            <span className="text-sm text-purple-700 dark:text-purple-300">
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                            <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                            <span className="text-sm text-gray-700 dark:text-gray-300">
                                 {conversationFiles.length} file
                                 {conversationFiles.length > 1 ? "s" : ""}
                             </span>
@@ -1283,17 +1283,17 @@ const ChatWindow = () => {
                 </div>
 
                 {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto bg-gradient-to-b from-white to-purple-50/30 dark:from-gray-900 dark:to-purple-900/10">
+                <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
                     <div className="max-w-4xl mx-auto px-4">
                         {!currentConversation ? (
                             <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
-                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-6 shadow-xl">
-                                    <span className="text-white text-3xl font-bold">
-                                        P2S
+                                <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                                    <span className="text-white dark:text-gray-900 text-3xl font-bold">
+                                        AI
                                     </span>
                                 </div>
                                 <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-                                    Welcome to Paper2Slides
+                                    Welcome
                                 </h2>
                                 <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl mb-6">
                                     Upload your documents{" "}
@@ -1305,16 +1305,16 @@ const ChatWindow = () => {
                                 </p>
                                 <button
                                     onClick={handleNewConversation}
-                                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium shadow-lg hover:shadow-xl transition-all"
+                                    className="px-6 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium shadow-lg hover:shadow-xl transition-all"
                                 >
-                                    Start New Conversation
+                                    Start New
                                 </button>
                             </div>
                         ) : messages.length === 0 ? (
                             <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
-                                <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-6 shadow-xl">
-                                    <span className="text-white text-3xl font-bold">
-                                        P2S
+                                <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                                    <span className="text-white dark:text-gray-900 text-3xl font-bold">
+                                        AI
                                     </span>
                                 </div>
                                 <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
@@ -1328,8 +1328,8 @@ const ChatWindow = () => {
                                     to get started
                                 </p>
                                 {conversationFiles.length > 0 && (
-                                    <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-                                        <p className="text-sm text-purple-700 dark:text-purple-300 mb-3">
+                                    <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
                                             This conversation has{" "}
                                             {conversationFiles.length} file
                                             {conversationFiles.length > 1
@@ -1342,10 +1342,10 @@ const ChatWindow = () => {
                                                 (file, idx) => (
                                                     <div
                                                         key={idx}
-                                                        className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg text-xs relative group"
+                                                        className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs relative group"
                                                     >
-                                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center flex-shrink-0 shadow-sm">
-                                                            <FileText className="w-4 h-4 text-white" />
+                                                        <div className="w-8 h-8 rounded-lg bg-gray-900 dark:bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                                                            <FileText className="w-4 h-4 text-white dark:text-gray-900" />
                                                         </div>
                                                         <span className="text-gray-700 dark:text-gray-300 pr-6">
                                                             {file.name}
@@ -1357,7 +1357,7 @@ const ChatWindow = () => {
                                                                     file,
                                                                 )
                                                             }
-                                                            className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/50 hover:bg-purple-200 dark:hover:bg-purple-900 text-purple-600 dark:text-purple-300 transition-all opacity-0 group-hover:opacity-100"
+                                                            className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all opacity-0 group-hover:opacity-100"
                                                             title="Preview file"
                                                         >
                                                             <Eye className="w-3 h-3" />
@@ -1462,7 +1462,7 @@ const ChatWindow = () => {
                                                     output.posterUrl
                                                 }
                                                 download
-                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-xs rounded-lg transition-all"
+                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 text-xs rounded-lg transition-all"
                                             >
                                                 <Download className="w-3 h-3" />
                                                 Download
@@ -1487,8 +1487,8 @@ const ChatWindow = () => {
                     >
                         {/* Modal Header */}
                         <div className="flex items-center gap-4 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center shadow-lg">
-                                <FileText className="w-6 h-6 text-white" />
+                            <div className="w-12 h-12 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-lg">
+                                <FileText className="w-6 h-6 text-white dark:text-gray-900" />
                             </div>
                             <div className="flex-1 min-w-0">
                                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
@@ -1515,8 +1515,8 @@ const ChatWindow = () => {
                                 />
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-[40vh] text-center">
-                                    <div className="w-28 h-28 rounded-3xl bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center mb-6 shadow-xl">
-                                        <FileText className="w-14 h-14 text-white" />
+                                    <div className="w-28 h-28 rounded-3xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                                        <FileText className="w-14 h-14 text-white dark:text-gray-900" />
                                     </div>
                                     <h4 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
                                         {previewFile.name ||
@@ -1555,7 +1555,7 @@ const ChatWindow = () => {
                         <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                             <button
                                 onClick={closePreview}
-                                className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium transition-all"
+                                className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium transition-all"
                             >
                                 Close
                             </button>
