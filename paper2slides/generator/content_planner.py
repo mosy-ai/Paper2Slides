@@ -129,14 +129,9 @@ class ContentPlanner:
         self.api_key = api_key or os.getenv("RAG_LLM_API_KEY", "")
         self.base_url = base_url or os.getenv("RAG_LLM_BASE_URL")
         self.model = model
-<<<<<<< HEAD
-
-=======
         # max_tokens: default 16000, override via RAG_LLM_MAX_TOKENS env or constructor
         # Note: deepseek has 8192 limit, set RAG_LLM_MAX_TOKENS=8192 if using deepseek
         self.max_tokens = max_tokens or int(os.getenv("RAG_LLM_MAX_TOKENS", "16000"))
-        
->>>>>>> upstream/main
         kwargs = {"api_key": self.api_key}
         if self.base_url:
             kwargs["base_url"] = self.base_url
