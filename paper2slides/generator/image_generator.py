@@ -6,13 +6,16 @@ Generate poster/slides images from ContentPlan.
 
 import base64
 import json
+import logging
 import os
 import random
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+import requests
 from langfuse.openai import OpenAI
 
 from ..prompts.image_generation import (
@@ -132,19 +135,50 @@ class ImageGenerator:
         self,
         api_key: str = None,
         base_url: str = None,
-        model: str = "google/gemini-3-pro-image-preview",
+        model: Optional[str] = None,
+        provider: Optional[str] = None,
+        response_mime_type: Optional[str] = None,
+        google_api_base_url: Optional[str] = None,
     ):
+        self.provider = (
+            provider or os.getenv("IMAGE_GEN_PROVIDER", "openrouter")
+        ).lower()
         self.api_key = api_key or os.getenv("IMAGE_GEN_API_KEY", "")
         self.base_url = base_url or os.getenv(
             "IMAGE_GEN_BASE_URL", "https://openrouter.ai/api/v1"
         )
-        self.model = model
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.google_api_base_url = (
+            google_api_base_url
+            or os.getenv(
+                "GOOGLE_GENAI_BASE_URL",
+                "https://generativelanguage.googleapis.com/v1beta",
+            )
+        ).rstrip("/")
+        self.response_mime_type = response_mime_type or os.getenv(
+            "IMAGE_GEN_RESPONSE_MIME_TYPE", "text/plain"
+        )
+        self.model = model or os.getenv("IMAGE_GEN_MODEL")
+
+        if not self.model:
+            if self.provider == "google":
+                # Official Gemini API image-capable default
+                self.model = "models/gemini-1.5-flash"
+            else:
+                self.model = "google/gemini-3-pro-image-preview"
+
+        if self.provider == "openrouter":
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        elif self.provider == "google":
+            self.client = None
+        else:
+            raise ValueError(f"Unsupported image generation provider: {self.provider}")
 
     def generate(
         self,
         plan: ContentPlan,
         gen_input: GenerationInput,
+        max_workers: int = 1,
+        save_callback=None,
     ) -> List[GeneratedImage]:
         """
         Generate images from ContentPlan.
@@ -152,6 +186,8 @@ class ImageGenerator:
         Args:
             plan: ContentPlan from ContentPlanner
             gen_input: GenerationInput with config and origin
+            max_workers: Maximum parallel workers for slides (3rd+ slides run in parallel)
+            save_callback: Optional callback function(generated_image, index, total) called after each image
 
         Returns:
             List of GeneratedImage (1 for poster, N for slides)
@@ -174,9 +210,12 @@ class ImageGenerator:
         language = gen_input.config.language
 
         if plan.output_type == "poster":
-            return self._generate_poster(
-                style_name, processed_style, all_sections_md, all_images, language
+            result = self._generate_poster(
+                style_name, processed_style, all_sections_md, all_images
             )
+            if save_callback and result:
+                save_callback(result[0], 0, 1)
+            return result
         else:
             return self._generate_slides(
                 plan,
@@ -184,16 +223,12 @@ class ImageGenerator:
                 processed_style,
                 all_sections_md,
                 figure_images,
-                language,
+                max_workers,
+                save_callback,
             )
 
     def _generate_poster(
-        self,
-        style_name,
-        processed_style: Optional[ProcessedStyle],
-        sections_md,
-        images,
-        language: str = "vietnamese",
+        self, style_name, processed_style: Optional[ProcessedStyle], sections_md, images
     ) -> List[GeneratedImage]:
         """Generate 1 poster image."""
         prompt = self._build_poster_prompt(
@@ -218,14 +253,14 @@ class ImageGenerator:
         processed_style: Optional[ProcessedStyle],
         all_sections_md,
         figure_images,
-        language: str = "vietnamese",
+        max_workers: int,
+        save_callback=None,
     ) -> List[GeneratedImage]:
-        """Generate N slide images."""
+        """Generate N slide images (slides 1-2 sequential, 3+ parallel)."""
         results = []
         total = len(plan.sections)
 
         # Select layout rules based on style
-        # Custom styles use default layout (LLM only generates style hints, not layouts)
         if style_name == "custom":
             layouts = SLIDE_LAYOUTS_DEFAULT
         elif style_name == "doraemon":
@@ -235,7 +270,9 @@ class ImageGenerator:
 
         style_ref_image = None  # Store 2nd slide as reference for all subsequent slides
 
-        for i, section in enumerate(plan.sections):
+        # Generate first 2 slides sequentially (slide 1: no ref, slide 2: becomes ref)
+        for i in range(min(2, total)):
+            section = plan.sections[i]
             section_md = self._format_single_section_markdown(section, plan)
             layout_rule = layouts.get(section.section_type, layouts["content"])
 
@@ -249,19 +286,15 @@ class ImageGenerator:
                 language=language,
             )
 
-            # Collect reference images
             section_images = self._filter_images([section], figure_images)
             reference_images = []
-
-            # Use 2nd slide as reference for all subsequent slides (all styles)
             if style_ref_image:
                 reference_images.append(style_ref_image)
-
             reference_images.extend(section_images)
 
             image_data, mime_type = self._call_model(prompt, reference_images)
 
-            # Save 2nd slide (i=1) as the style reference for all styles
+            # Save 2nd slide (i=1) as style reference
             if i == 1:
                 style_ref_image = {
                     "figure_id": "Reference Slide",
@@ -270,11 +303,58 @@ class ImageGenerator:
                     "mime_type": mime_type,
                 }
 
-            results.append(
-                GeneratedImage(
+            generated_img = GeneratedImage(
+                section_id=section.id, image_data=image_data, mime_type=mime_type
+            )
+            results.append(generated_img)
+
+            # Save immediately if callback provided
+            if save_callback:
+                save_callback(generated_img, i, total)
+
+        # Generate remaining slides in parallel (from 3rd onwards)
+        if total > 2:
+            results_dict = {}
+
+            def generate_single(i, section):
+                section_md = self._format_single_section_markdown(section, plan)
+                layout_rule = layouts.get(section.section_type, layouts["content"])
+
+                prompt = self._build_slide_prompt(
+                    style_name=style_name,
+                    processed_style=processed_style,
+                    sections_md=section_md,
+                    layout_rule=layout_rule,
+                    slide_info=f"Slide {i + 1} of {total}",
+                    context_md=all_sections_md,
+                )
+
+                section_images = self._filter_images([section], figure_images)
+                reference_images = [style_ref_image] if style_ref_image else []
+                reference_images.extend(section_images)
+
+                image_data, mime_type = self._call_model(prompt, reference_images)
+                return i, GeneratedImage(
                     section_id=section.id, image_data=image_data, mime_type=mime_type
                 )
-            )
+
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(generate_single, i, plan.sections[i]): i
+                    for i in range(2, total)
+                }
+
+                for future in as_completed(futures):
+                    idx, generated_img = future.result()
+                    results_dict[idx] = generated_img
+
+                    # Save immediately if callback provided
+                    if save_callback:
+                        save_callback(generated_img, idx, total)
+
+            # Append in order
+            for i in range(2, total):
+                results.append(results_dict[i])
 
         return results
 
@@ -449,7 +529,16 @@ class ImageGenerator:
 
     @retry_with_exponential_backoff
     def _call_model(self, prompt: str, reference_images: List[dict]) -> tuple:
-        """Call the image generation model."""
+        """Call image generation provider based on configuration."""
+        if self.provider == "google":
+            return self._call_model_google(prompt, reference_images)
+        return self._call_model_openrouter(prompt, reference_images)
+
+    def _call_model_openrouter(
+        self, prompt: str, reference_images: List[dict]
+    ) -> tuple:
+        """Call the image generation model with retry logic."""
+        logger = logging.getLogger(__name__)
         content = [{"type": "text", "text": prompt}]
 
         # Add each image with figure_id and caption label
@@ -468,21 +557,183 @@ class ImageGenerator:
                     }
                 )
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": content}],
-            extra_body={"modalities": ["image", "text"]},
+        # Retry logic for API calls
+        max_retries = 3
+        retry_delay = 2  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    f"Calling image generation API (attempt {attempt + 1}/{max_retries})..."
+                )
+
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": content}],
+                    extra_body={"modalities": ["image", "text"]},
+                )
+
+                # Check if response is valid
+                if response is None:
+                    error_msg = (
+                        "API returned None response - possible rate limit or API error"
+                    )
+                    logger.warning(f"{error_msg} (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    raise RuntimeError(error_msg)
+
+                if not hasattr(response, "choices") or not response.choices:
+                    error_msg = f"API response has no choices: {response}"
+                    logger.warning(f"{error_msg} (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    raise RuntimeError(error_msg)
+
+                message = response.choices[0].message
+                if hasattr(message, "images") and message.images:
+                    image_url = message.images[0]["image_url"]["url"]
+                    if image_url.startswith("data:"):
+                        header, base64_data = image_url.split(",", 1)
+                        mime_type = header.split(":")[1].split(";")[0]
+                        logger.info("Image generation successful")
+                        return base64.b64decode(base64_data), mime_type
+
+                error_msg = "Image generation failed - no images in response"
+                logger.warning(f"{error_msg} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise RuntimeError(error_msg)
+
+            except Exception as e:
+                logger.error(
+                    f"Error in API call (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise
+
+        raise RuntimeError("Image generation failed after all retry attempts")
+
+    def _call_model_google(self, prompt: str, reference_images: List[dict]) -> tuple:
+        """Call the official Google Gemini API for image generation."""
+        logger = logging.getLogger(__name__)
+        max_retries = 3
+        retry_delay = 2  # seconds
+
+        model_name = (
+            self.model if self.model.startswith("models/") else f"models/{self.model}"
         )
+        url = f"{self.google_api_base_url}/{model_name}:generateContent"
 
-        message = response.choices[0].message
-        if hasattr(message, "images") and message.images:
-            image_url = message.images[0]["image_url"]["url"]
-            if image_url.startswith("data:"):
-                header, base64_data = image_url.split(",", 1)
-                mime_type = header.split(":")[1].split(";")[0]
-                return base64.b64decode(base64_data), mime_type
+        wants_image = self.response_mime_type.lower().startswith("image/")
+        model_key = model_name.split("/", 1)[-1]
+        image_capable_prefixes = (
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-1.5-flash-8b",
+            "gemini-2.0-flash",
+        )
+        if wants_image and not model_key.startswith(image_capable_prefixes):
+            raise ValueError(
+                f"Model '{model_name}' does not support image responses with the Google Gemini API. "
+                "Use an image-capable model such as 'models/gemini-1.5-flash' (or -8b/pro/2.0-flash) "
+                "or change IMAGE_GEN_RESPONSE_MIME_TYPE to a text type."
+            )
 
-        raise RuntimeError("Image generation failed")
+        # Compose prompt parts with optional inline reference images
+        parts = [{"text": prompt}]
+        for img in reference_images:
+            if img.get("base64") and img.get("mime_type"):
+                fig_id = img.get("figure_id", "Figure")
+                caption = img.get("caption", "")
+                label = f"[{fig_id}]: {caption}" if caption else f"[{fig_id}]"
+                parts.append({"text": label})
+                parts.append(
+                    {
+                        "inlineData": {
+                            "mimeType": img["mime_type"],
+                            "data": img["base64"],
+                        }
+                    }
+                )
+
+        payload = {
+            "contents": [{"role": "user", "parts": parts}],
+            "generationConfig": {"responseMimeType": self.response_mime_type},
+        }
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    f"Calling Google Gemini image API (attempt {attempt + 1}/{max_retries})..."
+                )
+                response = requests.post(
+                    url,
+                    params={"key": self.api_key},
+                    json=payload,
+                    timeout=60,
+                )
+
+                if response.status_code >= 400:
+                    logger.warning(
+                        f"Google API error {response.status_code}: {response.text[:200]}"
+                    )
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    response.raise_for_status()
+
+                data = response.json()
+                candidates = data.get("candidates", [])
+                if not candidates:
+                    error_msg = "Google API response has no candidates"
+                    logger.warning(f"{error_msg} (attempt {attempt + 1}/{max_retries})")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_delay * (attempt + 1))
+                        continue
+                    raise RuntimeError(error_msg)
+
+                parts = candidates[0].get("content", {}).get("parts", [])
+                for part in parts:
+                    inline = part.get("inlineData")
+                    if inline and inline.get("data"):
+                        mime_type = inline.get("mimeType") or self.response_mime_type
+                        logger.info("Image generation successful (Google Gemini)")
+                        return base64.b64decode(inline["data"]), mime_type
+
+                    text_data = part.get("text")
+                    if text_data:
+                        try:
+                            decoded = base64.b64decode(text_data, validate=True)
+                            logger.info(
+                                "Image generation successful (Google Gemini, text base64 payload)"
+                            )
+                            return decoded, self.response_mime_type
+                        except Exception:
+                            continue
+
+                error_msg = "Image generation failed - no image payload in response"
+                logger.warning(f"{error_msg} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise RuntimeError(error_msg)
+
+            except Exception as e:
+                logger.error(
+                    f"Error in Google API call (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise
+
+        raise RuntimeError("Image generation failed after all retry attempts")
 
 
 def save_images_as_pdf(images: List[GeneratedImage], output_path: str):

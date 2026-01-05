@@ -80,22 +80,24 @@ async def run_generate_stage(base_dir: Path, config_dir: Path, config: Dict) -> 
     gen_input = GenerationInput(config=gen_config, content=content, origin=origin)
     
     logger.info("Generating images...")
-    generator = ImageGenerator()
-    images = generator.generate(plan, gen_input)
-    logger.info(f"  Generated {len(images)} images")
     
-    # Save images
+    # Prepare output directory
     output_subdir = get_output_dir(config_dir)
     output_subdir.mkdir(parents=True, exist_ok=True)
-    
     ext_map = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
     
-    for img in images:
+    # Save callback: save each image immediately after generation
+    def save_image_callback(img, index, total):
         ext = ext_map.get(img.mime_type, ".png")
         filepath = output_subdir / f"{img.section_id}{ext}"
         with open(filepath, "wb") as f:
             f.write(img.image_data)
-        logger.info(f"  Saved: {filepath.name}")
+        logger.info(f"  [{index+1}/{total}] Saved: {filepath.name}")
+    
+    generator = ImageGenerator()
+    max_workers = config.get("max_workers", 1)
+    images = generator.generate(plan, gen_input, max_workers=max_workers, save_callback=save_image_callback)
+    logger.info(f"  Generated {len(images)} images")
     
     # Generate PDF for slides
     output_type = config.get("output_type", "slides")

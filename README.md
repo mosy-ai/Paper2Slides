@@ -46,8 +46,15 @@ Turns your **research papers**, **reports**, and **documents** into **profession
 ### ⚡ Easy as One Command
 ```bash
 # One command to generate slides from a paper
-python -m paper2slides --input paper.pdf --output slides --style doraemon --length medium --fast
+python -m paper2slides --input paper.pdf --output slides --style doraemon --length medium --fast --parallel 2
 ```
+
+---
+
+## 🔥 News
+
+- **[2025.12.09]** Added parallel slide generation (`--parallel`) for faster processing
+- **[2025.12.08]** Paper2Slides is now open source!
 
 ---
 
@@ -75,6 +82,15 @@ python -m paper2slides --input paper.pdf --output slides --style doraemon --leng
 Examples from <a href="https://arxiv.org/abs/2512.02556">DeepSeek-V3.2: Pushing the Frontier of Open Large Language Models</a></sub>
 
 </div>
+
+<details>
+<summary><b>💡 Custom Style Example: Totoro Theme</b></summary>
+
+```
+--style "Studio Ghibli anime style with warm whimsical aesthetic. Use soft watercolor Morandi tones with light cream background, muted sage green and dusty pink accents. Totoro character can appear as a friendly guide relating to the content, with nature elements like soft clouds or leaves."
+```
+
+</details>
 
 ---
 
@@ -132,6 +148,9 @@ python -m paper2slides --input paper.pdf --output poster --style "minimalist wit
 # Fast mode
 python -m paper2slides --input paper.pdf --output slides --fast
 
+# Enable parallel generation (2 workers by default)
+python -m paper2slides --input paper.pdf --output slides --parallel 2
+
 # List all processed outputs
 python -m paper2slides --list
 ```
@@ -147,6 +166,7 @@ python -m paper2slides --list
 | `--length` | Slides length: `short`, `medium`, `long` | `short` |
 | `--density` | Poster density: `sparse`, `medium`, `dense` | `medium` |
 | `--fast` | Fast mode: skip RAG indexing | `false` |
+| `--parallel` | Enable parallel slide generation: `--parallel` uses 2 workers, `--parallel N` uses N workers | `1` (sequential without this option) |
 | `--from-stage` | Force restart from stage: `rag`, `summary`, `plan`, `generate` | Auto-detect |
 | `--debug` | Enable debug logging | `false` |
 
@@ -268,10 +288,17 @@ outputs/
 | `doraemon` | Colorful, friendly style with illustrations |
 | `custom` | Any text description for LLM-generated style |
 
+### Image Generation Providers
+
+- Set `IMAGE_GEN_PROVIDER` in `paper2slides/.env` to choose the backend:
+  - `openrouter` (default): uses `IMAGE_GEN_API_KEY`, `IMAGE_GEN_BASE_URL`, and `IMAGE_GEN_MODEL` (default `google/gemini-3-pro-image-preview`)
+  - `google`: uses the official Gemini API at `GOOGLE_GENAI_BASE_URL` (default `https://generativelanguage.googleapis.com/v1beta`), `IMAGE_GEN_API_KEY`, `IMAGE_GEN_MODEL` (default `models/gemini-3-pro-image-preview`, must be image-capable), and `IMAGE_GEN_RESPONSE_MIME_TYPE` (default `text/plain`; use text types if your model does not support image responses)
+- Reference figures are sent as inline data when supported (Google) or as `image_url` attachments (OpenRouter).
+
 ### Image Generation Notes
 
 > [!TIP]
-> Paper2Slides uses `gemini-3-pro-image-preview` (Nano Banana Pro Preview) for image generation. Key findings:
+> By default Paper2Slides uses `gemini-3-pro-image-preview` (OpenRouter) for image generation; you can switch to an image-capable Google Gemini model (e.g., `models/gemini-1.5-flash`) via `IMAGE_GEN_PROVIDER=google`. Key findings:
 > 
 > - **Mood Keywords**: Words like "warm", "elegant", "vibrant" strongly influence the overall color palette
 > - **Layout vs Style**: Fine-grained *layout* instructions ground well; fine-grained *element styling* does not
@@ -346,6 +373,12 @@ Paper2Slides/
 **🚀 Turn any document into professional presentations in minutes!**  
 
 </div>
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=HKUDS/Paper2Slides&type=timeline&legend=top-left)](https://www.star-history.com/#HKUDS/Paper2Slides&type=timeline&legend=top-left)
 
 ---
 

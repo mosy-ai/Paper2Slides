@@ -60,6 +60,8 @@ def main():
                         help="Enable debug logging")
     parser.add_argument("--fast", action="store_true",
                         help="Fast mode: parse only, no RAG indexing (direct LLM query)")
+    parser.add_argument("--parallel", type=int, nargs='?', const=2, default=None,
+                        help="Enable parallel slide generation with N workers (default: 2 if specified)")
     
     args = parser.parse_args()
     
@@ -97,6 +99,7 @@ def main():
         "slides_length": args.length,
         "poster_density": args.density,
         "fast_mode": args.fast,
+        "max_workers": args.parallel if args.parallel else 1,
     }
     
     # Determine paths
