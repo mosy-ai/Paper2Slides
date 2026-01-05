@@ -3,6 +3,7 @@ import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ConversationList from "./ConversationList";
 import ConfigPanel from "./ConfigPanel";
+import { WizardContainer } from "./wizard";
 import { PanelLeftOpen, FileText, Download, Eye, X } from "lucide-react";
 
 // Generate unique ID
@@ -34,6 +35,7 @@ const ChatWindow = () => {
     const [showLeftPanel, setShowLeftPanel] = useState(true);
     const [currentWorkflow, setCurrentWorkflow] = useState(null); // Now includes conversationId
     const [previewFile, setPreviewFile] = useState(null);
+    const [useWizardMode, setUseWizardMode] = useState(true); // Use wizard flow by default
     const messagesEndRef = useRef(null);
     const abortControllerRef = useRef(null);
 
@@ -1238,192 +1240,223 @@ const ChatWindow = () => {
                 </div>
             )}
 
-            {/* Middle Panel - Chat Card */}
+            {/* Middle Panel - Main Content */}
             <div className="flex flex-col flex-1 min-w-0 bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">
-                {/* Header */}
-                <div className="flex items-center justify-between px-6 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 h-[72px] flex-shrink-0">
-                    <div className="flex items-center space-x-3">
-                        {/* Show expand button only when sidebar is collapsed */}
-                        {!showLeftPanel && (
-                            <button
-                                onClick={() => setShowLeftPanel(true)}
-                                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                                title="Show sidebar"
-                            >
-                                <PanelLeftOpen className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-                            </button>
-                        )}
-                        <div className="w-10 h-10 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-lg">
-                            <span className="text-white dark:text-gray-900 text-sm font-bold">
-                                AI
-                            </span>
-                        </div>
-                        <div>
-                            <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                Document Generator
-                            </h1>
-                            {currentConversation && (
-                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
-                                    {currentConversation.title || "New Chat"}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Current conversation files indicator */}
-                    {conversationFiles.length > 0 && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                            <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                            <span className="text-sm text-gray-700 dark:text-gray-300">
-                                {conversationFiles.length} file
-                                {conversationFiles.length > 1 ? "s" : ""}
-                            </span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
-                    <div className="max-w-4xl mx-auto px-4">
-                        {!currentConversation ? (
-                            <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
-                                <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
-                                    <span className="text-white dark:text-gray-900 text-3xl font-bold">
-                                        AI
-                                    </span>
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-                                    Welcome
-                                </h2>
-                                <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl mb-6">
-                                    Upload your documents{" "}
-                                    <span className="whitespace-nowrap">
-                                        (PDF, DOC, DOCX, Markdown)
-                                    </span>{" "}
-                                    and I'll transform them into stunning
-                                    presentations
-                                </p>
+                {/* Header - Only show in chat mode or when no conversation */}
+                {(!useWizardMode || !currentConversation) && (
+                    <div className="flex items-center justify-between px-6 border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 h-[72px] flex-shrink-0">
+                        <div className="flex items-center space-x-3">
+                            {/* Show expand button only when sidebar is collapsed */}
+                            {!showLeftPanel && (
                                 <button
-                                    onClick={handleNewConversation}
-                                    className="px-6 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium shadow-lg hover:shadow-xl transition-all"
+                                    onClick={() => setShowLeftPanel(true)}
+                                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                                    title="Show sidebar"
                                 >
-                                    Start New
+                                    <PanelLeftOpen className="w-5 h-5 text-gray-600 dark:text-gray-400" />
                                 </button>
+                            )}
+                            <div className="w-10 h-10 rounded-xl bg-gray-900 dark:bg-white flex items-center justify-center shadow-lg">
+                                <span className="text-white dark:text-gray-900 text-sm font-bold">
+                                    AI
+                                </span>
                             </div>
-                        ) : messages.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
-                                <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
-                                    <span className="text-white dark:text-gray-900 text-3xl font-bold">
-                                        AI
-                                    </span>
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
-                                    Ready to create your presentation
-                                </h2>
-                                <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl">
-                                    Upload your documents{" "}
-                                    <span className="whitespace-nowrap">
-                                        (PDF, DOC, DOCX, Markdown)
-                                    </span>{" "}
-                                    to get started
-                                </p>
-                                {conversationFiles.length > 0 && (
-                                    <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-xl">
-                                        <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-                                            This conversation has{" "}
-                                            {conversationFiles.length} file
-                                            {conversationFiles.length > 1
-                                                ? "s"
-                                                : ""}
-                                            :
-                                        </p>
-                                        <div className="flex flex-wrap gap-3">
-                                            {conversationFiles.map(
-                                                (file, idx) => (
-                                                    <div
-                                                        key={idx}
-                                                        className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs relative group"
-                                                    >
-                                                        <div className="w-8 h-8 rounded-lg bg-gray-900 dark:bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                                                            <FileText className="w-4 h-4 text-white dark:text-gray-900" />
-                                                        </div>
-                                                        <span className="text-gray-700 dark:text-gray-300 pr-6">
-                                                            {file.name}
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                openPreview(
-                                                                    file,
-                                                                )
-                                                            }
-                                                            className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all opacity-0 group-hover:opacity-100"
-                                                            title="Preview file"
-                                                        >
-                                                            <Eye className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                ),
-                                            )}
-                                        </div>
-                                    </div>
+                            <div>
+                                <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                    Document Generator
+                                </h1>
+                                {currentConversation && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                                        {currentConversation.title || "New Chat"}
+                                    </p>
                                 )}
                             </div>
-                        ) : (
-                            <MessageList
-                                messages={messages}
-                                uploadedFiles={conversationFiles}
-                                currentWorkflow={currentWorkflow}
-                                isLoading={isLoading}
-                                onCancelGeneration={handleCancelGeneration}
-                                conversationId={currentConversationId}
-                            />
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-                </div>
+                        </div>
 
-                {/* Configuration Panel - Always show when conversation exists */}
-                {currentConversation && (
-                    <div className="border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 py-3">
-                        <ConfigPanel
-                            content={content}
-                            setContent={setContent}
-                            style={style}
-                            setStyle={setStyle}
-                            output={output}
-                            setOutput={setOutput}
-                            length={length}
-                            setLength={setLength}
-                            density={density}
-                            setDensity={setDensity}
-                            fastMode={fastMode}
-                            setFastMode={setFastMode}
-                            language={language}
-                            setLanguage={setLanguage}
-                            compact={messages.length > 0}
-                            onRegenerate={handleRegenerate}
-                            isLoading={isLoading}
-                        />
+                        {/* Current conversation files indicator */}
+                        {conversationFiles.length > 0 && (
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+                                <FileText className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                <span className="text-sm text-gray-700 dark:text-gray-300">
+                                    {conversationFiles.length} file
+                                    {conversationFiles.length > 1 ? "s" : ""}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 )}
 
-                {/* Input Area */}
-                {currentConversation && (
-                    <MessageInput
-                        onSendMessage={handleSendMessage}
-                        isLoading={isLoading}
-                        outputType={output}
-                        style={style}
-                        preSelectedFiles={[]}
-                        onPreSelectedFilesClear={() => {}}
-                        hasMessages={messages.length > 0}
+                {/* Content Area - Wizard Mode or Chat Mode */}
+                {useWizardMode && currentConversation ? (
+                    <WizardContainer
+                        conversation={currentConversation}
+                        onUpdateConversation={updateConversation}
+                        config={{
+                            content,
+                            style,
+                            output,
+                            length,
+                            density,
+                            fastMode,
+                            language,
+                        }}
+                        setConfig={(newConfig) => {
+                            if (newConfig.content !== undefined) setContent(newConfig.content);
+                            if (newConfig.style !== undefined) setStyle(newConfig.style);
+                            if (newConfig.output !== undefined) setOutput(newConfig.output);
+                            if (newConfig.length !== undefined) setLength(newConfig.length);
+                            if (newConfig.density !== undefined) setDensity(newConfig.density);
+                            if (newConfig.fastMode !== undefined) setFastMode(newConfig.fastMode);
+                            if (newConfig.language !== undefined) setLanguage(newConfig.language);
+                        }}
                     />
+                ) : (
+                    <>
+                        {/* Messages Area */}
+                        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+                            <div className="max-w-4xl mx-auto px-4">
+                                {!currentConversation ? (
+                                    <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
+                                        <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                                            <span className="text-white dark:text-gray-900 text-3xl font-bold">
+                                                AI
+                                            </span>
+                                        </div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+                                            Welcome
+                                        </h2>
+                                        <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl mb-6">
+                                            Upload your documents{" "}
+                                            <span className="whitespace-nowrap">
+                                                (PDF, DOC, DOCX, Markdown)
+                                            </span>{" "}
+                                            and I'll transform them into stunning
+                                            presentations
+                                        </p>
+                                        <button
+                                            onClick={handleNewConversation}
+                                            className="px-6 py-3 rounded-xl bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 font-medium shadow-lg hover:shadow-xl transition-all"
+                                        >
+                                            Start New
+                                        </button>
+                                    </div>
+                                ) : messages.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-center">
+                                        <div className="w-20 h-20 rounded-2xl bg-gray-900 dark:bg-white flex items-center justify-center mb-6 shadow-xl">
+                                            <span className="text-white dark:text-gray-900 text-3xl font-bold">
+                                                AI
+                                            </span>
+                                        </div>
+                                        <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3">
+                                            Ready to create your presentation
+                                        </h2>
+                                        <p className="text-base text-gray-600 dark:text-gray-400 max-w-xl">
+                                            Upload your documents{" "}
+                                            <span className="whitespace-nowrap">
+                                                (PDF, DOC, DOCX, Markdown)
+                                            </span>{" "}
+                                            to get started
+                                        </p>
+                                        {conversationFiles.length > 0 && (
+                                            <div className="mt-6 p-4 bg-gray-100 dark:bg-gray-800 rounded-xl">
+                                                <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+                                                    This conversation has{" "}
+                                                    {conversationFiles.length} file
+                                                    {conversationFiles.length > 1
+                                                        ? "s"
+                                                        : ""}
+                                                    :
+                                                </p>
+                                                <div className="flex flex-wrap gap-3">
+                                                    {conversationFiles.map(
+                                                        (file, idx) => (
+                                                            <div
+                                                                key={idx}
+                                                                className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs relative group"
+                                                            >
+                                                                <div className="w-8 h-8 rounded-lg bg-gray-900 dark:bg-white flex items-center justify-center flex-shrink-0 shadow-sm">
+                                                                    <FileText className="w-4 h-4 text-white dark:text-gray-900" />
+                                                                </div>
+                                                                <span className="text-gray-700 dark:text-gray-300 pr-6">
+                                                                    {file.name}
+                                                                </span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        openPreview(
+                                                                            file,
+                                                                        )
+                                                                    }
+                                                                    className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 transition-all opacity-0 group-hover:opacity-100"
+                                                                    title="Preview file"
+                                                                >
+                                                                    <Eye className="w-3 h-3" />
+                                                                </button>
+                                                            </div>
+                                                        ),
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <MessageList
+                                        messages={messages}
+                                        uploadedFiles={conversationFiles}
+                                        currentWorkflow={currentWorkflow}
+                                        isLoading={isLoading}
+                                        onCancelGeneration={handleCancelGeneration}
+                                        conversationId={currentConversationId}
+                                    />
+                                )}
+                                <div ref={messagesEndRef} />
+                            </div>
+                        </div>
+
+                        {/* Configuration Panel - Always show when conversation exists */}
+                        {currentConversation && (
+                            <div className="border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-6 py-3">
+                                <ConfigPanel
+                                    content={content}
+                                    setContent={setContent}
+                                    style={style}
+                                    setStyle={setStyle}
+                                    output={output}
+                                    setOutput={setOutput}
+                                    length={length}
+                                    setLength={setLength}
+                                    density={density}
+                                    setDensity={setDensity}
+                                    fastMode={fastMode}
+                                    setFastMode={setFastMode}
+                                    language={language}
+                                    setLanguage={setLanguage}
+                                    compact={messages.length > 0}
+                                    onRegenerate={handleRegenerate}
+                                    isLoading={isLoading}
+                                />
+                            </div>
+                        )}
+
+                        {/* Input Area */}
+                        {currentConversation && (
+                            <MessageInput
+                                onSendMessage={handleSendMessage}
+                                isLoading={isLoading}
+                                outputType={output}
+                                style={style}
+                                preSelectedFiles={[]}
+                                onPreSelectedFilesClear={() => {}}
+                                hasMessages={messages.length > 0}
+                            />
+                        )}
+                    </>
                 )}
             </div>
 
-            {/* Right Panel - Current Conversation Details (optional, can show generated outputs) */}
-            {currentConversation &&
+            {/* Right Panel - Current Conversation Details (only in chat mode) */}
+            {!useWizardMode &&
+                currentConversation &&
                 currentConversation.generatedOutputs &&
                 currentConversation.generatedOutputs.length > 0 && (
                     <div className="w-72 flex-shrink-0 bg-white dark:bg-gray-900 rounded-2xl shadow-xl overflow-hidden">

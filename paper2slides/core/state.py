@@ -12,7 +12,15 @@ from .paths import (
     get_plan_checkpoint,
 )
 
+# Pipeline stages
 STAGES = ["rag", "summary", "plan", "generate"]
+
+# Status values for stages
+STATUS_PENDING = "pending"
+STATUS_RUNNING = "running"
+STATUS_COMPLETED = "completed"
+STATUS_FAILED = "failed"
+STATUS_AWAITING_CONFIRMATION = "awaiting_confirmation"  # Used after plan stage
 
 
 def get_state_path(config_dir: Path) -> Path:

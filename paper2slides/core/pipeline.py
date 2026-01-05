@@ -21,6 +21,7 @@ async def run_pipeline(
     from_stage: str,
     session_id: str | None = None,
     session_manager=None,
+    pause_after_plan: bool = False,
 ):
     """Run pipeline from specified stage.
 
@@ -31,6 +32,7 @@ async def run_pipeline(
         from_stage: Stage to start from
         session_id: Session ID for cancellation tracking
         session_manager: Session manager to check cancellation status
+        pause_after_plan: If True, pause after plan stage for user confirmation
     """
 
     # Initialize or load state
@@ -81,6 +83,13 @@ async def run_pipeline(
             state["stages"][stage] = "completed"
             save_state(config_dir, state)
 
+            # Pause after plan stage if requested
+            if stage == "plan" and pause_after_plan:
+                state["stages"]["generate"] = "awaiting_confirmation"
+                save_state(config_dir, state)
+                logger.info("Pipeline paused after plan stage - awaiting user confirmation")
+                return  # Exit pipeline, will be resumed later
+
         except Exception as e:
             state["stages"][stage] = "failed"
             state["error"] = str(e)
@@ -94,6 +103,52 @@ async def run_pipeline(
         status = state["stages"].get(stage, "pending")
         icon = "✓" if status == "completed" else "✗" if status == "failed" else "○"
         logger.info(f"  [{icon}] {stage}: {status}")
+
+
+async def continue_pipeline_from_generate(
+    base_dir: Path,
+    config_dir: Path,
+    config: Dict,
+    session_id: str | None = None,
+    session_manager=None,
+):
+    """Continue pipeline from generate stage after user confirmation.
+
+    Args:
+        base_dir: Base directory for this document/project
+        config_dir: Config-specific directory
+        config: Pipeline configuration
+        session_id: Session ID for cancellation tracking
+        session_manager: Session manager to check cancellation status
+    """
+    # Load state and verify it's awaiting confirmation
+    state = load_state(config_dir)
+    if not state:
+        raise ValueError("No state found - cannot continue pipeline")
+
+    if state["stages"].get("generate") != "awaiting_confirmation":
+        raise ValueError("Pipeline is not awaiting confirmation")
+
+    # Update session_id if provided
+    if session_id:
+        state["session_id"] = session_id
+
+    # Continue with generate stage
+    await run_pipeline(
+        base_dir, config_dir, config,
+        from_stage="generate",
+        session_id=session_id,
+        session_manager=session_manager,
+        pause_after_plan=False  # Don't pause again
+    )
+
+
+def is_awaiting_confirmation(config_dir: Path) -> bool:
+    """Check if pipeline is awaiting user confirmation after plan stage."""
+    state = load_state(config_dir)
+    if not state:
+        return False
+    return state.get("stages", {}).get("generate") == "awaiting_confirmation"
 
 
 def list_outputs(output_dir: str):

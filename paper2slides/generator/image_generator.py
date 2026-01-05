@@ -738,6 +738,120 @@ class ImageGenerator:
         raise RuntimeError("Image generation failed after all retry attempts")
 
 
+    def regenerate_single_slide(
+        self,
+        plan: ContentPlan,
+        gen_input: GenerationInput,
+        section_index: int,
+        custom_prompt: str = None,
+        reference_image_base64: str = None,
+        reference_image_mime: str = "image/png",
+        style_ref_image_data: bytes = None,
+        old_slide_image_data: bytes = None,
+    ) -> GeneratedImage:
+        """
+        Regenerate a single slide with optional custom prompt and reference image.
+
+        Args:
+            plan: ContentPlan from ContentPlanner
+            gen_input: GenerationInput with config and origin
+            section_index: Index of the section to regenerate (0-based)
+            custom_prompt: Optional custom prompt to append to the generation prompt
+            reference_image_base64: Optional base64-encoded reference image for style guidance
+            reference_image_mime: MIME type of the reference image
+            style_ref_image_data: Optional style reference image data (usually slide 2)
+            old_slide_image_data: Optional old version of this slide for reference
+
+        Returns:
+            GeneratedImage for the regenerated slide
+        """
+        if section_index < 0 or section_index >= len(plan.sections):
+            raise ValueError(f"Invalid section index: {section_index}")
+
+        section = plan.sections[section_index]
+        figure_images = self._load_figure_images(plan, gen_input.origin.base_path)
+        style_name = gen_input.config.style.value
+        custom_style = gen_input.config.custom_style
+        language = gen_input.config.language
+
+        # Process custom style with LLM if needed
+        processed_style = None
+        if style_name == "custom" and custom_style:
+            processed_style = process_custom_style(self.client, custom_style)
+            if not processed_style.valid:
+                raise ValueError(f"Invalid custom style: {processed_style.error}")
+
+        # Select layout rules based on style
+        if style_name == "custom":
+            layouts = SLIDE_LAYOUTS_DEFAULT
+        elif style_name == "doraemon":
+            layouts = SLIDE_LAYOUTS_DORAEMON
+        else:
+            layouts = SLIDE_LAYOUTS_ACADEMIC
+
+        all_sections_md = self._format_sections_markdown(plan)
+        section_md = self._format_single_section_markdown(section, plan)
+        layout_rule = layouts.get(section.section_type, layouts["content"])
+
+        # Build the prompt
+        prompt = self._build_slide_prompt(
+            style_name=style_name,
+            processed_style=processed_style,
+            sections_md=section_md,
+            layout_rule=layout_rule,
+            slide_info=f"Slide {section_index + 1} of {len(plan.sections)}",
+            context_md=all_sections_md,
+            language=language,
+        )
+
+        # Append custom prompt if provided
+        if custom_prompt:
+            prompt += f"\n\n---\nAdditional instructions:\n{custom_prompt}"
+
+        # Prepare reference images
+        section_images = self._filter_images([section], figure_images)
+        reference_images = []
+
+        # Add style reference image if provided (from previous generation)
+        if style_ref_image_data:
+            reference_images.append({
+                "figure_id": "Reference Slide",
+                "caption": "STRICTLY MAINTAIN: same background color, same accent color, same font style, same chart/icon style. Keep visual consistency.",
+                "base64": base64.b64encode(style_ref_image_data).decode("utf-8"),
+                "mime_type": "image/png",
+            })
+
+        # Add old version of this slide as reference for layout/style continuity
+        if old_slide_image_data:
+            reference_images.append({
+                "figure_id": "Previous Version",
+                "caption": "This is the previous version of this slide. Maintain similar layout and overall structure while applying the requested changes.",
+                "base64": base64.b64encode(old_slide_image_data).decode("utf-8"),
+                "mime_type": "image/png",
+            })
+
+        # Add user-provided reference image if available
+        if reference_image_base64:
+            reference_images.append({
+                "figure_id": "User Reference",
+                "caption": "Use this image as a reference for the visual style or content.",
+                "base64": reference_image_base64,
+                "mime_type": reference_image_mime,
+            })
+
+        # Add section-specific figures
+        reference_images.extend(section_images)
+
+        # Generate the image
+        image_data, mime_type = self._call_model(prompt, reference_images)
+
+        return GeneratedImage(
+            section_id=section.id,
+            image_data=image_data,
+            mime_type=mime_type
+        )
+
+
 def save_images_as_pdf(images: List[GeneratedImage], output_path: str):
     """
     Save generated images as a single PDF file.

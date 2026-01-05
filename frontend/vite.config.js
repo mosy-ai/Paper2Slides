@@ -9,7 +9,7 @@ export default defineConfig({
         strictPort: false, // If port 5173 is in use, try next available port
         proxy: {
             "/api": {
-                target: "http://localhost:8152", // Backend default port
+                target: "http://localhost:5132", // Backend port
                 changeOrigin: true,
                 rewrite: (path) => path,
                 timeout: 300000,
@@ -23,12 +23,12 @@ export default defineConfig({
                 },
             },
             "/outputs": {
-                target: "http://localhost:8152", // Backend default port
+                target: "http://localhost:5132", // Backend port
                 changeOrigin: true,
                 rewrite: (path) => path,
             },
             "/uploads": {
-                target: "http://localhost:8152", // Backend default port
+                target: "http://localhost:5132", // Backend port
                 changeOrigin: true,
                 rewrite: (path) => path,
             },

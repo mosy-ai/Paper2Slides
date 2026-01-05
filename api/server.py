@@ -3,6 +3,7 @@ FastAPI server for Paper2Slides
 """
 
 import asyncio
+import base64
 import json
 import logging
 import re
@@ -37,7 +38,10 @@ from paper2slides.core import (
     get_base_dir,
     get_config_dir,
     get_config_name,
+    get_plan_checkpoint,
     run_pipeline,
+    continue_pipeline_from_generate,
+    is_awaiting_confirmation,
 )
 from paper2slides.core.state import STAGES, create_state, load_state, save_state
 from paper2slides.utils import setup_logging
@@ -530,8 +534,10 @@ async def generate_slides_with_pipeline(
 
     # Run the pipeline (base_dir already handles document grouping)
     # Pass session_manager to enable cancellation checks
+    # pause_after_plan=True pauses after plan stage for user confirmation
     await run_pipeline(
-        base_dir, config_dir, config, from_stage, session_id, session_manager
+        base_dir, config_dir, config, from_stage, session_id, session_manager,
+        pause_after_plan=True
     )
 
     # Find generated output
@@ -791,6 +797,8 @@ async def get_status(session_id: str):
         stages = state_data.get("stages", {})
         if any(status == "failed" for status in stages.values()):
             overall_status = "failed"
+        elif stages.get("generate") == "awaiting_confirmation":
+            overall_status = "awaiting_confirmation"
         elif all(status == "completed" for status in stages.values()):
             overall_status = "completed"
         elif any(status == "running" for status in stages.values()):
@@ -831,12 +839,15 @@ async def get_result(session_id: str):
             pdf_file = next(
                 (f for f in output_files if f["filename"].endswith(".pdf")), None
             )
-            # Find image files
-            image_files = [
-                f
-                for f in output_files
-                if f["filename"].endswith((".png", ".jpg", ".jpeg", ".webp"))
-            ]
+            # Find image files and sort by filename to ensure correct order
+            image_files = sorted(
+                [
+                    f
+                    for f in output_files
+                    if f["filename"].endswith((".png", ".jpg", ".jpeg", ".webp"))
+                ],
+                key=lambda x: x["filename"]
+            )
 
             # Get output_type from state
             session_dir = UPLOAD_DIR / session_id
@@ -1101,6 +1112,520 @@ async def get_slide_content(session_id: str):
             f"Error extracting slide content for session {session_id}: {e}",
             exc_info=True,
         )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Helper function to find config_dir for a session
+def find_session_config_dir(session_id: str) -> tuple:
+    """Find the config directory for a given session.
+
+    Returns:
+        Tuple of (config_dir, base_dir, content_type) or raises HTTPException
+    """
+    session_dir = UPLOAD_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+
+    pdf_files = list(session_dir.glob("*.pdf"))
+    if not pdf_files:
+        raise HTTPException(status_code=400, detail=f"No PDF files found in session {session_id}")
+
+    if len(pdf_files) > 1:
+        project_name = f"session_{session_id[:8]}"
+    else:
+        project_name = get_project_name(str(pdf_files[0]))
+
+    # Search for the state file with matching session_id
+    for content_type in ["paper", "general"]:
+        base_dir = Path(get_base_dir(str(OUTPUT_DIR), project_name, content_type))
+        if base_dir.exists():
+            for state_file in base_dir.rglob("state.json"):
+                if state_file.is_file():
+                    try:
+                        with open(state_file, "r") as f:
+                            state_data = json.load(f)
+                        if state_data.get("session_id") == session_id:
+                            config_dir = state_file.parent
+                            return config_dir, base_dir, content_type
+                    except Exception:
+                        continue
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No configuration found for session {session_id}"
+    )
+
+
+@app.get("/api/plan/{session_id}")
+async def get_plan(session_id: str):
+    """
+    Get the content plan for a session.
+
+    Returns the plan data including sections, tables, and figures.
+    This endpoint is used to display the outline for editing.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        # Load the plan checkpoint
+        plan_checkpoint = config_dir / "checkpoint_plan.json"
+        if not plan_checkpoint.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="Plan not yet generated. Wait for plan stage to complete."
+            )
+
+        with open(plan_checkpoint, "r") as f:
+            plan_data = json.load(f)
+
+        # Load state to check status
+        state = load_state(config_dir)
+        is_editable = state and state.get("stages", {}).get("generate") == "awaiting_confirmation"
+
+        return {
+            "session_id": session_id,
+            "plan": plan_data.get("plan", {}),
+            "tables_index": plan_data.get("tables_index", {}),
+            "figures_index": plan_data.get("figures_index", {}),
+            "origin": plan_data.get("origin", {}),
+            "content_type": plan_data.get("content_type", content_type),
+            "is_editable": is_editable,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting plan for session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/plan/{session_id}")
+async def update_plan(session_id: str, request: dict):
+    """
+    Update the content plan for a session.
+
+    Accepts modified sections and saves them to the checkpoint.
+    Only works when the pipeline is awaiting confirmation.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        # Check if plan is editable
+        state = load_state(config_dir)
+        if not state or state.get("stages", {}).get("generate") != "awaiting_confirmation":
+            raise HTTPException(
+                status_code=400,
+                detail="Plan cannot be edited at this stage. It's only editable after plan stage completes."
+            )
+
+        # Load current plan
+        plan_checkpoint = config_dir / "checkpoint_plan.json"
+        if not plan_checkpoint.exists():
+            raise HTTPException(status_code=404, detail="Plan not found")
+
+        with open(plan_checkpoint, "r") as f:
+            plan_data = json.load(f)
+
+        # Update sections if provided
+        if "sections" in request:
+            plan_data["plan"]["sections"] = request["sections"]
+
+        # Save updated plan
+        with open(plan_checkpoint, "w") as f:
+            json.dump(plan_data, f, ensure_ascii=False, indent=2)
+
+        logger.info(f"Updated plan for session {session_id}")
+
+        return {
+            "success": True,
+            "message": "Plan updated successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating plan for session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/plan/{session_id}/confirm")
+async def confirm_plan(session_id: str, background_tasks: BackgroundTasks):
+    """
+    Confirm the plan and continue to generate stage.
+
+    This endpoint resumes the pipeline from the generate stage.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        # Check if awaiting confirmation
+        state = load_state(config_dir)
+        if not state or state.get("stages", {}).get("generate") != "awaiting_confirmation":
+            raise HTTPException(
+                status_code=400,
+                detail="Pipeline is not awaiting confirmation"
+            )
+
+        # Check if another session is running
+        running_session = session_manager.get_running_session()
+        if running_session and running_session != session_id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Another session is already running: {running_session[:8]}"
+            )
+
+        # Get config from state
+        config = state.get("config", {})
+
+        # Start the generate stage in background
+        background_tasks.add_task(
+            run_generate_background,
+            session_id,
+            base_dir,
+            config_dir,
+            config,
+            session_manager,
+        )
+
+        return {
+            "success": True,
+            "message": "Generation started",
+            "session_id": session_id
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error confirming plan for session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def run_generate_background(
+    session_id: str,
+    base_dir: Path,
+    config_dir: Path,
+    config: dict,
+    session_manager: SessionManager,
+):
+    """Run the generate stage in background after plan confirmation."""
+    try:
+        can_start = await session_manager.start_session(session_id)
+        if not can_start:
+            logger.error(f"Cannot start generate for session {session_id[:8]} - another session is running")
+            return
+
+        logger.info(f"Continuing pipeline (generate stage) for session {session_id[:8]}")
+
+        await continue_pipeline_from_generate(
+            base_dir, config_dir, config, session_id, session_manager
+        )
+
+        # Store result in cache
+        output_files = []
+        if config_dir.exists():
+            timestamp_dirs = sorted(
+                [d for d in config_dir.iterdir() if d.is_dir()], reverse=True
+            )
+            if timestamp_dirs:
+                latest_output = timestamp_dirs[0]
+                for file_path in latest_output.iterdir():
+                    if file_path.is_file():
+                        output_files.append({
+                            "filename": file_path.name,
+                            "path": str(file_path),
+                            "relative_path": str(file_path.relative_to(OUTPUT_DIR)),
+                        })
+
+        if not hasattr(app.state, "results"):
+            app.state.results = {}
+        app.state.results[session_id] = {
+            "output_dir": str(config_dir),
+            "output_files": output_files,
+            "num_files": len(output_files),
+        }
+
+        logger.info(f"Generate stage completed for session {session_id[:8]}")
+
+    except Exception as e:
+        logger.error(f"Generate stage failed for session {session_id[:8]}: {e}", exc_info=True)
+
+        if not hasattr(app.state, "results"):
+            app.state.results = {}
+        app.state.results[session_id] = {"error": str(e)}
+
+        # Update state
+        state = load_state(config_dir)
+        if state:
+            state["stages"]["generate"] = "failed"
+            state["error"] = str(e)
+            save_state(config_dir, state)
+    finally:
+        await session_manager.end_session(session_id)
+
+
+@app.post("/api/slides/{session_id}/regenerate")
+async def regenerate_slide(
+    session_id: str,
+    slide_index: int = Form(...),
+    prompt: Optional[str] = Form(None),
+    reference_image: Optional[UploadFile] = File(None),
+):
+    """
+    Regenerate a single slide with optional custom prompt and reference image.
+
+    Args:
+        session_id: The session ID
+        slide_index: 0-based index of the slide to regenerate
+        prompt: Optional custom prompt for regeneration
+        reference_image: Optional reference image file for style guidance
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        # Load plan checkpoint
+        plan_checkpoint = config_dir / "checkpoint_plan.json"
+        if not plan_checkpoint.exists():
+            raise HTTPException(status_code=404, detail="Plan not found")
+
+        with open(plan_checkpoint, "r") as f:
+            plan_data = json.load(f)
+
+        # Load summary checkpoint for GenerationInput
+        from paper2slides.core.paths import get_summary_checkpoint
+        state = load_state(config_dir)
+        config = state.get("config", {})
+
+        summary_checkpoint = get_summary_checkpoint(base_dir, config)
+        if not summary_checkpoint.exists():
+            raise HTTPException(status_code=404, detail="Summary checkpoint not found")
+
+        with open(summary_checkpoint, "r") as f:
+            summary_data = json.load(f)
+
+        # Reconstruct ContentPlan
+        from paper2slides.generator.content_planner import ContentPlan, Section, TableRef, FigureRef
+        from paper2slides.generator.config import GenerationInput, GenerationConfig, OutputType, StyleType
+        from paper2slides.summary.models import OriginalElements, TableInfo, FigureInfo
+
+        plan_raw = plan_data.get("plan", {})
+        sections = []
+        for s in plan_raw.get("sections", []):
+            tables = [TableRef(**t) for t in s.get("tables", [])]
+            figures = [FigureRef(**f) for f in s.get("figures", [])]
+            sections.append(Section(
+                id=s.get("id"),
+                title=s.get("title"),
+                section_type=s.get("type", "content"),
+                content=s.get("content", ""),
+                tables=tables,
+                figures=figures,
+            ))
+
+        # Build tables_index and figures_index
+        tables_index = {}
+        for tid, tinfo in plan_data.get("tables_index", {}).items():
+            tables_index[tid] = TableInfo(
+                table_id=tinfo.get("id"),
+                caption=tinfo.get("caption", ""),
+                html_content=tinfo.get("html", ""),
+            )
+
+        figures_index = {}
+        for fid, finfo in plan_data.get("figures_index", {}).items():
+            figures_index[fid] = FigureInfo(
+                figure_id=finfo.get("id"),
+                caption=finfo.get("caption"),
+                image_path=finfo.get("image_path", ""),
+            )
+
+        plan = ContentPlan(
+            output_type=plan_raw.get("output_type", "slides"),
+            sections=sections,
+            tables_index=tables_index,
+            figures_index=figures_index,
+            metadata=plan_raw.get("metadata", {}),
+        )
+
+        # Reconstruct OriginalElements
+        origin_data = plan_data.get("origin", {})
+        origin_tables = [
+            TableInfo(
+                table_id=t.get("id", t.get("table_id", "")),
+                caption=t.get("caption", ""),
+                html_content=t.get("html", t.get("html_content", "")),
+            )
+            for t in origin_data.get("tables", [])
+        ]
+        origin_figures = [
+            FigureInfo(
+                figure_id=f.get("id", f.get("figure_id", "")),
+                caption=f.get("caption"),
+                image_path=f.get("image_path", ""),
+            )
+            for f in origin_data.get("figures", [])
+        ]
+        origin = OriginalElements(
+            tables=origin_tables,
+            figures=origin_figures,
+            base_path=origin_data.get("base_path", str(base_dir)),
+        )
+
+        # Build GenerationConfig
+        style_value = config.get("style", "academic")
+        try:
+            style_type = StyleType(style_value)
+        except ValueError:
+            style_type = StyleType.CUSTOM
+
+        gen_config = GenerationConfig(
+            output_type=OutputType(config.get("output_type", "slides")),
+            style=style_type,
+            custom_style=config.get("custom_style"),
+            slides_length=config.get("slides_length", "medium"),
+            poster_density=config.get("poster_density", "medium"),
+            language=config.get("language", "vietnamese"),
+        )
+
+        # Reconstruct content from summary checkpoint
+        from paper2slides.summary.paper import PaperContent
+        from paper2slides.summary.general import GeneralContent
+
+        content_type = summary_data.get("content_type", "paper")
+        content_data = summary_data.get("content", {})
+
+        if content_type == "paper":
+            content = PaperContent(
+                paper_info=content_data.get("paper_info", ""),
+                figures=content_data.get("figures", ""),
+                tables=content_data.get("tables", ""),
+                equations=content_data.get("equations", ""),
+                motivation=content_data.get("motivation", ""),
+                solution=content_data.get("solution", ""),
+                results=content_data.get("results", ""),
+                contributions=content_data.get("contributions", ""),
+                raw_rag_results=content_data.get("raw_rag_results", {}),
+            )
+        else:
+            content = GeneralContent(
+                content=content_data.get("content", ""),
+                raw_rag_results=content_data.get("raw_rag_results", []),
+            )
+
+        gen_input = GenerationInput(config=gen_config, content=content, origin=origin)
+
+        # Process reference image if provided
+        reference_image_base64 = None
+        reference_image_mime = "image/png"
+        if reference_image:
+            image_data = await reference_image.read()
+            reference_image_base64 = base64.b64encode(image_data).decode("utf-8")
+            reference_image_mime = reference_image.content_type or "image/png"
+
+        # Find style reference image (slide 2) and old slide from existing outputs
+        style_ref_image_data = None
+        old_slide_image_data = None
+        timestamp_dirs = sorted(
+            [d for d in config_dir.iterdir() if d.is_dir()], reverse=True
+        )
+        if timestamp_dirs:
+            latest_output = timestamp_dirs[0]
+            # Style reference from slide 2
+            slide_2_path = latest_output / "slide_02.png"
+            if slide_2_path.exists():
+                with open(slide_2_path, "rb") as f:
+                    style_ref_image_data = f.read()
+
+            # Find the OLD version of the current slide being regenerated
+            for ext in ['.png', '.jpg', '.jpeg']:
+                old_slide_path = latest_output / f"slide_{slide_index + 1:02d}{ext}"
+                if old_slide_path.exists():
+                    with open(old_slide_path, "rb") as f:
+                        old_slide_image_data = f.read()
+                    break
+
+        # Create ImageGenerator and regenerate
+        from paper2slides.generator.image_generator import ImageGenerator
+
+        generator = ImageGenerator()
+        result = generator.regenerate_single_slide(
+            plan=plan,
+            gen_input=gen_input,
+            section_index=slide_index,
+            custom_prompt=prompt,
+            reference_image_base64=reference_image_base64,
+            reference_image_mime=reference_image_mime,
+            style_ref_image_data=style_ref_image_data,
+            old_slide_image_data=old_slide_image_data,
+        )
+
+        # Save the regenerated image
+        if timestamp_dirs:
+            output_dir = timestamp_dirs[0]
+        else:
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = config_dir / timestamp
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine filename
+        ext = ".png" if "png" in result.mime_type else ".jpg"
+        slide_filename = f"slide_{slide_index + 1:02d}{ext}"
+        slide_path = output_dir / slide_filename
+
+        # Delete any existing versions of this slide with different extensions
+        slide_prefix = f"slide_{slide_index + 1:02d}"
+        for old_file in output_dir.glob(f"{slide_prefix}.*"):
+            if old_file.suffix.lower() in ['.png', '.jpg', '.jpeg'] and old_file != slide_path:
+                old_file.unlink()
+                logger.info(f"Deleted old slide file: {old_file.name}")
+
+        with open(slide_path, "wb") as f:
+            f.write(result.image_data)
+
+        logger.info(f"Regenerated slide {slide_index + 1} for session {session_id[:8]}")
+
+        # Regenerate PDF with all current slides
+        from PIL import Image as PILImage
+
+        slide_files = sorted([
+            f for f in output_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']
+            and f.name.startswith('slide_')
+        ])
+
+        if slide_files:
+            images = []
+            for slide_file in slide_files:
+                img = PILImage.open(slide_file)
+                images.append(img)
+
+            pdf_path = output_dir / "slides.pdf"
+            # Convert to RGB and save
+            rgb_images = []
+            for img in images:
+                if img.mode == 'RGBA':
+                    rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+                    rgb_img.paste(img, mask=img.split()[3])
+                    rgb_images.append(rgb_img)
+                else:
+                    rgb_images.append(img.convert('RGB'))
+
+            if rgb_images:
+                rgb_images[0].save(pdf_path, save_all=True, append_images=rgb_images[1:])
+                logger.info(f"Regenerated PDF after slide {slide_index + 1} update")
+
+        # Return the URL
+        relative_path = slide_path.relative_to(OUTPUT_DIR)
+        return {
+            "success": True,
+            "slide_index": slide_index,
+            "image_url": f"/outputs/{relative_path}",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error regenerating slide for session {session_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

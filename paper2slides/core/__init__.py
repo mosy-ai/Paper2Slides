@@ -18,7 +18,12 @@ from .state import (
     create_state,
     detect_start_stage,
 )
-from .pipeline import run_pipeline, list_outputs
+from .pipeline import (
+    run_pipeline,
+    list_outputs,
+    continue_pipeline_from_generate,
+    is_awaiting_confirmation,
+)
 
 __all__ = [
     # Path functions
@@ -39,5 +44,7 @@ __all__ = [
     # Pipeline
     "run_pipeline",
     "list_outputs",
+    "continue_pipeline_from_generate",
+    "is_awaiting_confirmation",
 ]
 
