@@ -121,7 +121,7 @@ class ContentPlanner:
         self,
         api_key: str = None,
         base_url: str = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-4o-mini",
         max_tokens: int = None,
     ):
         import os

@@ -95,7 +95,7 @@ def process_custom_style(
     client: OpenAI, user_style: str, model: str = None
 ) -> ProcessedStyle:
     """Process user's custom style request with LLM."""
-    model = model or os.getenv("LLM_MODEL", "openai/gpt-4o")
+    model = model or os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
 
     try:
         response = client.chat.completions.create(
@@ -737,7 +737,6 @@ class ImageGenerator:
 
         raise RuntimeError("Image generation failed after all retry attempts")
 
-
     def regenerate_single_slide(
         self,
         plan: ContentPlan,
@@ -814,30 +813,36 @@ class ImageGenerator:
 
         # Add style reference image if provided (from previous generation)
         if style_ref_image_data:
-            reference_images.append({
-                "figure_id": "Reference Slide",
-                "caption": "STRICTLY MAINTAIN: same background color, same accent color, same font style, same chart/icon style. Keep visual consistency.",
-                "base64": base64.b64encode(style_ref_image_data).decode("utf-8"),
-                "mime_type": "image/png",
-            })
+            reference_images.append(
+                {
+                    "figure_id": "Reference Slide",
+                    "caption": "STRICTLY MAINTAIN: same background color, same accent color, same font style, same chart/icon style. Keep visual consistency.",
+                    "base64": base64.b64encode(style_ref_image_data).decode("utf-8"),
+                    "mime_type": "image/png",
+                }
+            )
 
         # Add old version of this slide as reference for layout/style continuity
         if old_slide_image_data:
-            reference_images.append({
-                "figure_id": "Previous Version",
-                "caption": "This is the previous version of this slide. Maintain similar layout and overall structure while applying the requested changes.",
-                "base64": base64.b64encode(old_slide_image_data).decode("utf-8"),
-                "mime_type": "image/png",
-            })
+            reference_images.append(
+                {
+                    "figure_id": "Previous Version",
+                    "caption": "This is the previous version of this slide. Maintain similar layout and overall structure while applying the requested changes.",
+                    "base64": base64.b64encode(old_slide_image_data).decode("utf-8"),
+                    "mime_type": "image/png",
+                }
+            )
 
         # Add user-provided reference image if available
         if reference_image_base64:
-            reference_images.append({
-                "figure_id": "User Reference",
-                "caption": "Use this image as a reference for the visual style or content.",
-                "base64": reference_image_base64,
-                "mime_type": reference_image_mime,
-            })
+            reference_images.append(
+                {
+                    "figure_id": "User Reference",
+                    "caption": "Use this image as a reference for the visual style or content.",
+                    "base64": reference_image_base64,
+                    "mime_type": reference_image_mime,
+                }
+            )
 
         # Add section-specific figures
         reference_images.extend(section_images)
@@ -846,9 +851,7 @@ class ImageGenerator:
         image_data, mime_type = self._call_model(prompt, reference_images)
 
         return GeneratedImage(
-            section_id=section.id,
-            image_data=image_data,
-            mime_type=mime_type
+            section_id=section.id, image_data=image_data, mime_type=mime_type
         )
 
 

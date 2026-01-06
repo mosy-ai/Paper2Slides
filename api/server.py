@@ -191,10 +191,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files for serving generated files
-app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
 # Mount uploads directory for serving uploaded source files
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+# Custom handler for outputs with extension fallback (defined below, before catch-all routes)
 
 
 class ChatResponse(BaseModel):
@@ -214,6 +214,51 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/outputs/{filepath:path}")
+async def serve_output_file(filepath: str):
+    """
+    Serve output files with fallback mechanism for image extensions.
+
+    If a .jpg file is requested but not found, automatically tries .png and other formats.
+    This handles cases where the frontend requests a different extension than what's saved.
+    """
+    file_path = OUTPUT_DIR / filepath
+
+    # Security check: ensure file is within OUTPUT_DIR
+    try:
+        file_path = file_path.resolve()
+        OUTPUT_DIR_resolved = OUTPUT_DIR.resolve()
+        if not str(file_path).startswith(str(OUTPUT_DIR_resolved)):
+            raise HTTPException(status_code=403, detail="Access denied")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
+    # Try the exact path first
+    if file_path.exists() and file_path.is_file():
+        return FileResponse(path=str(file_path))
+
+    # If not found and it's an image extension, try fallback extensions
+    image_extensions = ['.png', '.jpg', '.jpeg', '.webp']
+    file_ext = file_path.suffix.lower()
+
+    if file_ext in image_extensions:
+        # Try other image extensions
+        file_stem = file_path.stem
+        file_parent = file_path.parent
+
+        for alt_ext in image_extensions:
+            if alt_ext == file_ext:
+                continue  # Already tried this one
+
+            alt_path = file_parent / f"{file_stem}{alt_ext}"
+            if alt_path.exists() and alt_path.is_file():
+                logger.info(f"Fallback: serving {alt_path.name} for requested {file_path.name}")
+                return FileResponse(path=str(alt_path))
+
+    # No file found
+    raise HTTPException(status_code=404, detail="File not found")
 
 
 @app.get("/api/session/running")
@@ -1567,26 +1612,32 @@ async def regenerate_slide(
             output_dir = config_dir / timestamp
             output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Determine filename
-        ext = ".png" if "png" in result.mime_type else ".jpg"
-        slide_filename = f"slide_{slide_index + 1:02d}{ext}"
+        # Always save as PNG for consistency
+        slide_filename = f"slide_{slide_index + 1:02d}.png"
         slide_path = output_dir / slide_filename
 
-        # Delete any existing versions of this slide with different extensions
+        # Delete any existing versions of this slide (any extension)
         slide_prefix = f"slide_{slide_index + 1:02d}"
         for old_file in output_dir.glob(f"{slide_prefix}.*"):
-            if old_file.suffix.lower() in ['.png', '.jpg', '.jpeg'] and old_file != slide_path:
+            if old_file.suffix.lower() in ['.png', '.jpg', '.jpeg']:
                 old_file.unlink()
                 logger.info(f"Deleted old slide file: {old_file.name}")
 
-        with open(slide_path, "wb") as f:
-            f.write(result.image_data)
+        # Convert to PNG if needed and save
+        from PIL import Image as PILImage
+        import io
+        img = PILImage.open(io.BytesIO(result.image_data))
+        if img.mode == 'RGBA':
+            # Convert RGBA to RGB with white background for PNG
+            rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+            rgb_img.paste(img, mask=img.split()[3])
+            rgb_img.save(slide_path, 'PNG')
+        else:
+            img.convert('RGB').save(slide_path, 'PNG')
 
         logger.info(f"Regenerated slide {slide_index + 1} for session {session_id[:8]}")
 
         # Regenerate PDF with all current slides
-        from PIL import Image as PILImage
-
         slide_files = sorted([
             f for f in output_dir.iterdir()
             if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']

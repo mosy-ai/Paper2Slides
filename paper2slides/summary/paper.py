@@ -152,7 +152,7 @@ async def _extract_section(
     content: str,
     section: str,
     llm_client,
-    model: str = "openai/gpt-4o",
+    model: str = "openai/gpt-4o-mini",
 ) -> str:
     """Extract structured content for a single section using LLM.
 
@@ -188,7 +188,7 @@ async def _extract_section(
 async def extract_paper(
     rag_results: RAGResults,
     llm_client,
-    model: str = "openai/gpt-4o",
+    model: str = "openai/gpt-4o-mini",
     clean_refs: bool = True,
     parallel: bool = True,
     max_concurrency: int = 5,
@@ -332,7 +332,7 @@ If information is missing or unclear for a paper, omit that field.
 async def extract_paper_metadata_from_markdown(
     markdown_paths: List[str],
     llm_client,
-    model: str = "openai/gpt-4o",
+    model: str = "openai/gpt-4o-mini",
     max_chars_per_file: int = 3000,
 ) -> str:
     """

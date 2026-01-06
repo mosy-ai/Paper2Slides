@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Loader2 } from "lucide-react";
 import UploadStep from "./UploadStep";
 import ProcessingStep from "./ProcessingStep";
 import OutlineEditorStep from "./OutlineEditorStep";
@@ -28,6 +29,7 @@ const WizardContainer = ({
     const [slides, setSlides] = useState([]);
     const [error, setError] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
+    const [showInfoModal, setShowInfoModal] = useState(false);
 
     const pollIntervalRef = useRef(null);
     const abortControllerRef = useRef(null);
@@ -56,28 +58,139 @@ const WizardContainer = ({
 
         // Check if there's a session with files
         const sessionFiles = conversation.files || [];
-        const savedSessionId = sessionFiles.length > 0 && sessionFiles[0]?.sessionId
-            ? sessionFiles[0].sessionId
-            : null;
+        const savedSessionId =
+            sessionFiles.length > 0 && sessionFiles[0]?.sessionId
+                ? sessionFiles[0].sessionId
+                : null;
 
         setSessionId(savedSessionId);
         setFiles(sessionFiles);
 
-        // Check for saved wizard state
-        const savedState = conversation.wizardState;
+        // Get cached data for fallback
+        const latestOutput =
+            conversation.generatedOutputs?.[
+                conversation.generatedOutputs.length - 1
+            ];
+        const cachedSlides = latestOutput?.slides || [];
 
-        // Priority 1: Completed outputs - show editor
-        if (conversation.generatedOutputs?.length > 0) {
-            const latestOutput = conversation.generatedOutputs[conversation.generatedOutputs.length - 1];
-            if (latestOutput?.slides) {
-                setSlides(latestOutput.slides);
-            }
+        // Priority 1: Check for active session via status API
+        if (savedSessionId) {
+            (async () => {
+                try {
+                    const statusResponse = await fetch(
+                        `/api/status/${savedSessionId}`,
+                    );
+                    if (!statusResponse.ok) {
+                        // Session doesn't exist or error - fall back to cached data or upload
+                        if (cachedSlides.length > 0) {
+                            setSlides(cachedSlides);
+                            setPlan(null);
+                            setCurrentStep(STEPS.EDITOR);
+                        } else {
+                            setCurrentStep(STEPS.UPLOAD);
+                        }
+                        return;
+                    }
+
+                    const statusData = await statusResponse.json();
+                    const status = statusData.status;
+
+                    if (status === "completed") {
+                        // Fetch results and show editor
+                        const resultResponse = await fetch(
+                            `/api/result/${savedSessionId}`,
+                        );
+                        if (resultResponse.ok) {
+                            const resultData = await resultResponse.json();
+                            if (resultData.slides?.length > 0) {
+                                setSlides(resultData.slides);
+                                setPlan(null);
+                                setCurrentStep(STEPS.EDITOR);
+
+                                // Update stored data
+                                if (onUpdateConversation) {
+                                    onUpdateConversation(conversation.id, {
+                                        generatedOutputs: [
+                                            {
+                                                id: Date.now().toString(),
+                                                slides: resultData.slides,
+                                                pptUrl: resultData.ppt_url,
+                                                posterUrl:
+                                                    resultData.poster_url,
+                                                timestamp:
+                                                    new Date().toISOString(),
+                                            },
+                                        ],
+                                    });
+                                }
+                                return;
+                            }
+                        }
+                        // Fall back to cached
+                        if (cachedSlides.length > 0) {
+                            setSlides(cachedSlides);
+                            setPlan(null);
+                            setCurrentStep(STEPS.EDITOR);
+                        }
+                    } else if (status === "awaiting_confirmation") {
+                        // Restore to OUTLINE step and fetch plan
+                        const planResponse = await fetch(
+                            `/api/plan/${savedSessionId}`,
+                        );
+                        if (planResponse.ok) {
+                            const planData = await planResponse.json();
+                            setPlan(planData);
+                        }
+                        setCurrentStep(STEPS.OUTLINE);
+                    } else if (status === "running") {
+                        // Determine which step based on stages
+                        const stages = statusData.stages || {};
+                        if (
+                            stages.generate === "running" ||
+                            stages.generate === "completed"
+                        ) {
+                            setCurrentStep(STEPS.GENERATING);
+                        } else {
+                            setCurrentStep(STEPS.PROCESSING);
+                        }
+                        // Resume polling
+                        setStages(stages);
+                        setIsLoading(true);
+                        setTimeout(() => {
+                            startStatusPolling(savedSessionId);
+                        }, 100);
+                    } else if (status === "failed") {
+                        setError(statusData.error || "Processing failed");
+                        setCurrentStep(STEPS.UPLOAD);
+                    } else {
+                        // Unknown status - default to upload
+                        setCurrentStep(STEPS.UPLOAD);
+                    }
+                } catch (err) {
+                    console.error("Error restoring session:", err);
+                    // Fall back to cached data or upload
+                    if (cachedSlides.length > 0) {
+                        setSlides(cachedSlides);
+                        setPlan(null);
+                        setCurrentStep(STEPS.EDITOR);
+                    } else {
+                        setCurrentStep(STEPS.UPLOAD);
+                    }
+                }
+            })();
+            return;
+        }
+
+        // Priority 2: Cached slides without session
+        if (cachedSlides.length > 0) {
+            setSlides(cachedSlides);
             setPlan(null);
             setCurrentStep(STEPS.EDITOR);
             return;
         }
 
-        // Priority 2: Saved wizard state - restore and potentially resume
+        // Priority 3: Saved wizard state (deprecated but kept for backward compatibility)
+        const savedState = conversation.wizardState;
         if (savedState?.sessionId && savedSessionId) {
             // Restore plan if available
             if (savedState.plan) {
@@ -88,7 +201,10 @@ const WizardContainer = ({
             if (savedState.step === STEPS.OUTLINE && savedState.plan) {
                 // Was editing outline - restore it
                 setCurrentStep(STEPS.OUTLINE);
-            } else if (savedState.step === STEPS.PROCESSING || savedState.step === STEPS.GENERATING) {
+            } else if (
+                savedState.step === STEPS.PROCESSING ||
+                savedState.step === STEPS.GENERATING
+            ) {
                 // Was in progress - resume polling
                 setCurrentStep(savedState.step);
                 setIsLoading(true);
@@ -114,7 +230,12 @@ const WizardContainer = ({
         if (!conversation || !onUpdateConversation) return;
 
         // Only save if we have a session and are in a saveable state
-        if (sessionId && (currentStep === STEPS.PROCESSING || currentStep === STEPS.OUTLINE || currentStep === STEPS.GENERATING)) {
+        if (
+            sessionId &&
+            (currentStep === STEPS.PROCESSING ||
+                currentStep === STEPS.OUTLINE ||
+                currentStep === STEPS.GENERATING)
+        ) {
             const wizardState = {
                 step: currentStep,
                 sessionId: sessionId,
@@ -143,76 +264,92 @@ const WizardContainer = ({
         };
     }, []);
 
-    // Start processing after upload
-    const handleStartProcessing = useCallback(async (uploadedFiles, uploadConfig) => {
-        setError(null);
-        setIsLoading(true);
-
-        try {
-            abortControllerRef.current = new AbortController();
-
-            const formData = new FormData();
-            formData.append("message", "");
-            formData.append("content", uploadConfig.content);
-            formData.append("output_type", uploadConfig.output);
-            formData.append("style", uploadConfig.style);
-            formData.append("language", uploadConfig.language);
-
-            if (uploadConfig.output === "slides") {
-                formData.append("length", uploadConfig.length);
-            } else {
-                formData.append("density", uploadConfig.density);
-            }
-
-            if (uploadConfig.content === "paper") {
-                formData.append("fast_mode", uploadConfig.fastMode ? "true" : "false");
-            }
-
-            uploadedFiles.forEach((file) => {
-                formData.append("files", file);
-            });
-
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                body: formData,
-                signal: abortControllerRef.current.signal,
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || `HTTP error ${response.status}`);
-            }
-
-            const data = await response.json();
-            setSessionId(data.session_id);
-
-            // Update conversation with files and session
-            if (onUpdateConversation && conversation) {
-                const fileInfos = data.uploaded_files.map((f) => ({
-                    name: f.name,
-                    size: f.size,
-                    url: f.url,
-                    sessionId: data.session_id,
-                }));
-                onUpdateConversation(conversation.id, {
-                    files: fileInfos,
-                    config: uploadConfig,
-                });
-            }
-
-            // Move to processing step and start polling
-            setCurrentStep(STEPS.PROCESSING);
-            startStatusPolling(data.session_id);
-
-        } catch (err) {
-            if (err.name === "AbortError") {
-                setError("Upload cancelled");
-            } else {
-                setError(err.message);
-            }
-            setIsLoading(false);
+    // Auto-dismiss info modal when step changes
+    useEffect(() => {
+        if (currentStep !== STEPS.UPLOAD && showInfoModal) {
+            setShowInfoModal(false);
         }
-    }, [conversation, onUpdateConversation]);
+    }, [currentStep, showInfoModal]);
+
+    // Start processing after upload
+    const handleStartProcessing = useCallback(
+        async (uploadedFiles, uploadConfig) => {
+            setError(null);
+            setIsLoading(true);
+            setShowInfoModal(true);
+
+            try {
+                abortControllerRef.current = new AbortController();
+
+                const formData = new FormData();
+                formData.append("message", "");
+                formData.append("content", uploadConfig.content);
+                formData.append("output_type", uploadConfig.output);
+                formData.append("style", uploadConfig.style);
+                formData.append("language", uploadConfig.language);
+
+                if (uploadConfig.output === "slides") {
+                    formData.append("length", uploadConfig.length);
+                } else {
+                    formData.append("density", uploadConfig.density);
+                }
+
+                if (uploadConfig.content === "paper") {
+                    formData.append(
+                        "fast_mode",
+                        uploadConfig.fastMode ? "true" : "false",
+                    );
+                }
+
+                uploadedFiles.forEach((file) => {
+                    formData.append("files", file);
+                });
+
+                const response = await fetch("/api/chat", {
+                    method: "POST",
+                    body: formData,
+                    signal: abortControllerRef.current.signal,
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(
+                        errorData.detail || `HTTP error ${response.status}`,
+                    );
+                }
+
+                const data = await response.json();
+                setSessionId(data.session_id);
+
+                // Update conversation with files and session
+                if (onUpdateConversation && conversation) {
+                    const fileInfos = data.uploaded_files.map((f) => ({
+                        name: f.name,
+                        size: f.size,
+                        url: f.url,
+                        sessionId: data.session_id,
+                    }));
+                    onUpdateConversation(conversation.id, {
+                        files: fileInfos,
+                        config: uploadConfig,
+                    });
+                }
+
+                // Move to processing step and start polling
+                setCurrentStep(STEPS.PROCESSING);
+                startStatusPolling(data.session_id);
+            } catch (err) {
+                if (err.name === "AbortError") {
+                    setError("Upload cancelled");
+                } else {
+                    setError(err.message);
+                }
+                setIsLoading(false);
+                setShowInfoModal(false);
+            }
+        },
+        [conversation, onUpdateConversation],
+    );
 
     // Poll for status updates
     const startStatusPolling = useCallback((sid) => {
@@ -280,13 +417,15 @@ const WizardContainer = ({
                 // Update conversation with results
                 if (onUpdateConversation && conversation) {
                     onUpdateConversation(conversation.id, {
-                        generatedOutputs: [{
-                            id: Date.now().toString(),
-                            slides: resultData.slides,
-                            pptUrl: resultData.ppt_url,
-                            posterUrl: resultData.poster_url,
-                            timestamp: new Date().toISOString(),
-                        }],
+                        generatedOutputs: [
+                            {
+                                id: Date.now().toString(),
+                                slides: resultData.slides,
+                                pptUrl: resultData.ppt_url,
+                                posterUrl: resultData.poster_url,
+                                timestamp: new Date().toISOString(),
+                            },
+                        ],
                     });
                 }
             }
@@ -296,85 +435,109 @@ const WizardContainer = ({
     };
 
     // Handle plan confirmation
-    const handleConfirmPlan = useCallback(async (editedSections) => {
-        setError(null);
-        setIsLoading(true);
+    const handleConfirmPlan = useCallback(
+        async (editedSections) => {
+            setError(null);
+            setIsLoading(true);
 
-        try {
-            // Save edited plan if sections were modified
-            if (editedSections) {
-                const updateResponse = await fetch(`/api/plan/${sessionId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sections: editedSections }),
-                });
+            try {
+                // Save edited plan if sections were modified
+                if (editedSections) {
+                    const updateResponse = await fetch(
+                        `/api/plan/${sessionId}`,
+                        {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ sections: editedSections }),
+                        },
+                    );
 
-                if (!updateResponse.ok) {
-                    throw new Error("Failed to save plan changes");
+                    if (!updateResponse.ok) {
+                        throw new Error("Failed to save plan changes");
+                    }
                 }
+
+                // Confirm plan and start generation
+                const confirmResponse = await fetch(
+                    `/api/plan/${sessionId}/confirm`,
+                    {
+                        method: "POST",
+                    },
+                );
+
+                if (!confirmResponse.ok) {
+                    const errorData = await confirmResponse
+                        .json()
+                        .catch(() => ({}));
+                    throw new Error(
+                        errorData.detail || "Failed to confirm plan",
+                    );
+                }
+
+                // Move to generating step and start polling
+                setCurrentStep(STEPS.GENERATING);
+                startStatusPolling(sessionId);
+            } catch (err) {
+                setError(err.message);
+                setIsLoading(false);
             }
-
-            // Confirm plan and start generation
-            const confirmResponse = await fetch(`/api/plan/${sessionId}/confirm`, {
-                method: "POST",
-            });
-
-            if (!confirmResponse.ok) {
-                const errorData = await confirmResponse.json().catch(() => ({}));
-                throw new Error(errorData.detail || "Failed to confirm plan");
-            }
-
-            // Move to generating step and start polling
-            setCurrentStep(STEPS.GENERATING);
-            startStatusPolling(sessionId);
-
-        } catch (err) {
-            setError(err.message);
-            setIsLoading(false);
-        }
-    }, [sessionId, startStatusPolling]);
+        },
+        [sessionId, startStatusPolling],
+    );
 
     // Handle slide regeneration
-    const handleRegenerateSlide = useCallback(async (slideIndex, prompt, referenceImage) => {
-        setError(null);
+    const handleRegenerateSlide = useCallback(
+        async (slideIndex, prompt, referenceImage) => {
+            setError(null);
 
-        try {
-            const formData = new FormData();
-            formData.append("slide_index", slideIndex);
-            if (prompt) {
-                formData.append("prompt", prompt);
+            try {
+                const formData = new FormData();
+                formData.append("slide_index", slideIndex);
+                if (prompt) {
+                    formData.append("prompt", prompt);
+                }
+                if (referenceImage) {
+                    formData.append("reference_image", referenceImage);
+                }
+
+                const response = await fetch(
+                    `/api/slides/${sessionId}/regenerate`,
+                    {
+                        method: "POST",
+                        body: formData,
+                    },
+                );
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(
+                        errorData.detail || "Failed to regenerate slide",
+                    );
+                }
+
+                const result = await response.json();
+
+                // Update slides array with new image
+                setSlides((prev) =>
+                    prev.map((slide, idx) =>
+                        idx === slideIndex
+                            ? {
+                                  ...slide,
+                                  image_url:
+                                      result.image_url + `?t=${Date.now()}`,
+                              }
+                            : slide,
+                    ),
+                );
+
+                return result;
+            } catch (err) {
+                setError(err.message);
+                throw err;
             }
-            if (referenceImage) {
-                formData.append("reference_image", referenceImage);
-            }
-
-            const response = await fetch(`/api/slides/${sessionId}/regenerate`, {
-                method: "POST",
-                body: formData,
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.detail || "Failed to regenerate slide");
-            }
-
-            const result = await response.json();
-
-            // Update slides array with new image
-            setSlides((prev) =>
-                prev.map((slide, idx) =>
-                    idx === slideIndex
-                        ? { ...slide, image_url: result.image_url + `?t=${Date.now()}` }
-                        : slide
-                )
-            );
-
-            return result;
-        } catch (err) {
-            setError(err.message);
-            throw err;
-        }
-    }, [sessionId]);
+        },
+        [sessionId],
+    );
 
     // Handle cancel
     const handleCancel = useCallback(async () => {
@@ -421,10 +584,7 @@ const WizardContainer = ({
 
             case STEPS.PROCESSING:
                 return (
-                    <ProcessingStep
-                        stages={stages}
-                        onCancel={handleCancel}
-                    />
+                    <ProcessingStep stages={stages} onCancel={handleCancel} />
                 );
 
             case STEPS.OUTLINE:
@@ -465,6 +625,47 @@ const WizardContainer = ({
     return (
         <div className="flex-1 flex flex-col overflow-hidden">
             {renderStep()}
+
+            {/* Informational Loading Modal */}
+            {showInfoModal && (
+                <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 max-w-md mx-4">
+                        {/* Icon */}
+                        <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                            <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
+                        </div>
+
+                        {/* Title */}
+                        <h3 className="text-xl font-semibold text-center text-gray-900 dark:text-gray-100 mb-2">
+                            Processing Your Document
+                        </h3>
+
+                        {/* Message */}
+                        <p className="text-center text-gray-600 dark:text-gray-400 mb-6">
+                            We're analyzing your document
+                        </p>
+
+                        {/* Progress indicator */}
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <div className="flex gap-1">
+                                <div
+                                    className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                    style={{ animationDelay: "0ms" }}
+                                ></div>
+                                <div
+                                    className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                    style={{ animationDelay: "150ms" }}
+                                ></div>
+                                <div
+                                    className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
+                                    style={{ animationDelay: "300ms" }}
+                                ></div>
+                            </div>
+                            <span>Starting...</span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

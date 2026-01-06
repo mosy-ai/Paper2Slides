@@ -119,7 +119,7 @@ async def _run_fast_queries_by_category(
     markdown_content: str,
     markdown_paths: List[str],
     queries_by_category: Dict[str, List[str]],
-    model: str = "gpt-4o",
+    model: str = "gpt-4o-mini",
     max_concurrency: int = 10,
 ) -> Dict[str, List[Dict]]:
     """

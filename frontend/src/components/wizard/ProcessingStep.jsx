@@ -36,17 +36,6 @@ const ProcessingStep = ({ stages, onCancel }) => {
         }
     };
 
-    const getStageLineColor = (status) => {
-        switch (status) {
-            case "completed":
-                return "bg-green-500";
-            case "running":
-                return "bg-blue-500";
-            default:
-                return "bg-gray-200 dark:bg-gray-700";
-        }
-    };
-
     // Find current active stage
     const activeStage = STAGE_ORDER.find((s) => stages[s] === "running");
     const activeInfo = activeStage ? STAGE_INFO[activeStage] : null;
@@ -85,15 +74,6 @@ const ProcessingStep = ({ stages, onCancel }) => {
 
                         return (
                             <div key={stageId} className="relative">
-                                {/* Connection Line */}
-                                {index < STAGE_ORDER.length - 1 && (
-                                    <div
-                                        className={`absolute left-[9px] top-8 w-0.5 h-8 ${getStageLineColor(
-                                            status === "completed" ? "completed" : "pending"
-                                        )}`}
-                                    ></div>
-                                )}
-
                                 {/* Stage Item */}
                                 <div className="flex items-start gap-3">
                                     <div className="flex-shrink-0 mt-0.5">

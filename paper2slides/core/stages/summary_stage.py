@@ -35,7 +35,7 @@ async def run_summary_stage(base_dir: Path, config: Dict) -> Dict:
 
     api_key = os.getenv("RAG_LLM_API_KEY", "")
     base_url = os.getenv("RAG_LLM_BASE_URL")
-    model = os.getenv("LLM_MODEL", "openai/gpt-4o")
+    model = os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
     llm_client = OpenAI(api_key=api_key, base_url=base_url)
 
     logger.info(f"Extracting content from indexed documents ({content_type})...")
@@ -68,7 +68,7 @@ async def run_summary_stage(base_dir: Path, config: Dict) -> Dict:
         content = await extract_paper(
             rag_results=rag_results,
             llm_client=llm_client,
-            model="openai/gpt-4o",
+            model="openai/gpt-4o-mini",
             parallel=True,
             max_concurrency=5,
         )
@@ -80,7 +80,7 @@ async def run_summary_stage(base_dir: Path, config: Dict) -> Dict:
         content = await extract_general(
             rag_results=all_results,
             llm_client=llm_client,
-            model="openai/gpt-4o",
+            model="openai/gpt-4o-mini",
         )
         summary_text = content.content
 
