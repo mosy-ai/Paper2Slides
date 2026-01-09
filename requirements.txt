@@ -23,3 +23,11 @@ fastapi==0.122
 uvicorn[standard]==0.38.0
 python-multipart==0.0.20
 pydantic==2.12.3
+
+# Video Generation Dependencies
+elevenlabs>=1.0.0          # ElevenLabs TTS SDK
+moviepy>=1.0.3             # Video composition
+proglog>=0.1.10            # Progress logging for moviepy
+replicate>=0.20.0          # Replicate API for Veo 3.1
+pydub>=0.25.1              # Audio processing
+aiohttp>=3.9.0             # Async HTTP for API calls

@@ -4,6 +4,7 @@ FastAPI server for Paper2Slides
 
 import asyncio
 import base64
+import io
 import json
 import logging
 import re
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
+from PIL import Image as PILImage
 
 load_dotenv()
 
@@ -34,18 +36,78 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import paper2slides functions
 from paper2slides.core import (
+    continue_pipeline_from_generate,
     detect_start_stage,
     get_base_dir,
     get_config_dir,
     get_config_name,
     get_plan_checkpoint,
-    run_pipeline,
-    continue_pipeline_from_generate,
     is_awaiting_confirmation,
+    run_pipeline,
+)
+
+# Find the latest timestamp directory with slides
+from paper2slides.core.paths import (
+    get_final_video_path,
+    get_latest_output_dir,
+    get_plan_checkpoint,
+    get_video_dir,
+    get_video_narration_dir,
+    get_video_state_path,
+    get_video_thumbnail_path,
+    get_video_transitions_dir,
+    setup_video_directories,
 )
 from paper2slides.core.state import STAGES, create_state, load_state, save_state
+
+# Reconstruct ContentPlan
+from paper2slides.generator.config import (
+    GenerationConfig,
+    GenerationInput,
+    OutputType,
+    StyleType,
+)
+from paper2slides.generator.content_planner import (
+    ContentPlan,
+    FigureRef,
+    Section,
+    TableRef,
+)
+from paper2slides.generator.image_generator import ImageGenerator
+from paper2slides.summary.general import GeneralContent
+from paper2slides.summary.models import FigureInfo, OriginalElements, TableInfo
+from paper2slides.summary.paper import PaperContent
 from paper2slides.utils import setup_logging
 from paper2slides.utils.path_utils import get_project_name
+
+# Create video config
+from paper2slides.video import (
+    ElevenLabsClient,
+    ScriptGenerator,
+    StageStatus,
+    TransitionStyle,
+    VideoComposer,
+    VideoConfig,
+    VideoResolution,
+    VideoStage,
+    VideoStatus,
+    add_narration_file,
+    add_script,
+    add_transition_file,
+    compose_presentation_video,
+    create_transition_generator,
+    create_video_state,
+    get_elevenlabs_api_key,
+    get_video_status_summary,
+    is_video_cancelled,
+    load_video_state,
+    mark_video_cancelled,
+    mark_video_failed,
+    save_video_state,
+    set_video_output,
+    update_video_progress,
+    update_video_stage,
+)
 
 # Configuration - use project root directories
 UPLOAD_DIR = PROJECT_ROOT / "sources" / "uploads"
@@ -240,7 +302,7 @@ async def serve_output_file(filepath: str):
         return FileResponse(path=str(file_path))
 
     # If not found and it's an image extension, try fallback extensions
-    image_extensions = ['.png', '.jpg', '.jpeg', '.webp']
+    image_extensions = [".png", ".jpg", ".jpeg", ".webp"]
     file_ext = file_path.suffix.lower()
 
     if file_ext in image_extensions:
@@ -254,7 +316,9 @@ async def serve_output_file(filepath: str):
 
             alt_path = file_parent / f"{file_stem}{alt_ext}"
             if alt_path.exists() and alt_path.is_file():
-                logger.info(f"Fallback: serving {alt_path.name} for requested {file_path.name}")
+                logger.info(
+                    f"Fallback: serving {alt_path.name} for requested {file_path.name}"
+                )
                 return FileResponse(path=str(alt_path))
 
     # No file found
@@ -390,7 +454,9 @@ async def chat(
                     saved_files.append(
                         {
                             "filename": safe_filename,  # Use safe filename for filesystem
-                            "original_filename": urllib.parse.unquote(file.filename),  # Keep original for display
+                            "original_filename": urllib.parse.unquote(
+                                file.filename
+                            ),  # Keep original for display
                             "path": str(file_path),
                             "size": file_path.stat().st_size,
                         }
@@ -581,8 +647,13 @@ async def generate_slides_with_pipeline(
     # Pass session_manager to enable cancellation checks
     # pause_after_plan=True pauses after plan stage for user confirmation
     await run_pipeline(
-        base_dir, config_dir, config, from_stage, session_id, session_manager,
-        pause_after_plan=True
+        base_dir,
+        config_dir,
+        config,
+        from_stage,
+        session_id,
+        session_manager,
+        pause_after_plan=True,
     )
 
     # Find generated output
@@ -891,7 +962,7 @@ async def get_result(session_id: str):
                     for f in output_files
                     if f["filename"].endswith((".png", ".jpg", ".jpeg", ".webp"))
                 ],
-                key=lambda x: x["filename"]
+                key=lambda x: x["filename"],
             )
 
             # Get output_type from state
@@ -1173,7 +1244,9 @@ def find_session_config_dir(session_id: str) -> tuple:
 
     pdf_files = list(session_dir.glob("*.pdf"))
     if not pdf_files:
-        raise HTTPException(status_code=400, detail=f"No PDF files found in session {session_id}")
+        raise HTTPException(
+            status_code=400, detail=f"No PDF files found in session {session_id}"
+        )
 
     if len(pdf_files) > 1:
         project_name = f"session_{session_id[:8]}"
@@ -1196,8 +1269,7 @@ def find_session_config_dir(session_id: str) -> tuple:
                         continue
 
     raise HTTPException(
-        status_code=404,
-        detail=f"No configuration found for session {session_id}"
+        status_code=404, detail=f"No configuration found for session {session_id}"
     )
 
 
@@ -1217,7 +1289,7 @@ async def get_plan(session_id: str):
         if not plan_checkpoint.exists():
             raise HTTPException(
                 status_code=404,
-                detail="Plan not yet generated. Wait for plan stage to complete."
+                detail="Plan not yet generated. Wait for plan stage to complete.",
             )
 
         with open(plan_checkpoint, "r") as f:
@@ -1225,7 +1297,9 @@ async def get_plan(session_id: str):
 
         # Load state to check status
         state = load_state(config_dir)
-        is_editable = state and state.get("stages", {}).get("generate") == "awaiting_confirmation"
+        is_editable = (
+            state and state.get("stages", {}).get("generate") == "awaiting_confirmation"
+        )
 
         return {
             "session_id": session_id,
@@ -1257,10 +1331,13 @@ async def update_plan(session_id: str, request: dict):
 
         # Check if plan is editable
         state = load_state(config_dir)
-        if not state or state.get("stages", {}).get("generate") != "awaiting_confirmation":
+        if (
+            not state
+            or state.get("stages", {}).get("generate") != "awaiting_confirmation"
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="Plan cannot be edited at this stage. It's only editable after plan stage completes."
+                detail="Plan cannot be edited at this stage. It's only editable after plan stage completes.",
             )
 
         # Load current plan
@@ -1281,15 +1358,14 @@ async def update_plan(session_id: str, request: dict):
 
         logger.info(f"Updated plan for session {session_id}")
 
-        return {
-            "success": True,
-            "message": "Plan updated successfully"
-        }
+        return {"success": True, "message": "Plan updated successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating plan for session {session_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error updating plan for session {session_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1305,10 +1381,12 @@ async def confirm_plan(session_id: str, background_tasks: BackgroundTasks):
 
         # Check if awaiting confirmation
         state = load_state(config_dir)
-        if not state or state.get("stages", {}).get("generate") != "awaiting_confirmation":
+        if (
+            not state
+            or state.get("stages", {}).get("generate") != "awaiting_confirmation"
+        ):
             raise HTTPException(
-                status_code=400,
-                detail="Pipeline is not awaiting confirmation"
+                status_code=400, detail="Pipeline is not awaiting confirmation"
             )
 
         # Check if another session is running
@@ -1316,7 +1394,7 @@ async def confirm_plan(session_id: str, background_tasks: BackgroundTasks):
         if running_session and running_session != session_id:
             raise HTTPException(
                 status_code=409,
-                detail=f"Another session is already running: {running_session[:8]}"
+                detail=f"Another session is already running: {running_session[:8]}",
             )
 
         # Get config from state
@@ -1335,13 +1413,15 @@ async def confirm_plan(session_id: str, background_tasks: BackgroundTasks):
         return {
             "success": True,
             "message": "Generation started",
-            "session_id": session_id
+            "session_id": session_id,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error confirming plan for session {session_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error confirming plan for session {session_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1356,10 +1436,14 @@ async def run_generate_background(
     try:
         can_start = await session_manager.start_session(session_id)
         if not can_start:
-            logger.error(f"Cannot start generate for session {session_id[:8]} - another session is running")
+            logger.error(
+                f"Cannot start generate for session {session_id[:8]} - another session is running"
+            )
             return
 
-        logger.info(f"Continuing pipeline (generate stage) for session {session_id[:8]}")
+        logger.info(
+            f"Continuing pipeline (generate stage) for session {session_id[:8]}"
+        )
 
         await continue_pipeline_from_generate(
             base_dir, config_dir, config, session_id, session_manager
@@ -1375,11 +1459,13 @@ async def run_generate_background(
                 latest_output = timestamp_dirs[0]
                 for file_path in latest_output.iterdir():
                     if file_path.is_file():
-                        output_files.append({
-                            "filename": file_path.name,
-                            "path": str(file_path),
-                            "relative_path": str(file_path.relative_to(OUTPUT_DIR)),
-                        })
+                        output_files.append(
+                            {
+                                "filename": file_path.name,
+                                "path": str(file_path),
+                                "relative_path": str(file_path.relative_to(OUTPUT_DIR)),
+                            }
+                        )
 
         if not hasattr(app.state, "results"):
             app.state.results = {}
@@ -1392,7 +1478,9 @@ async def run_generate_background(
         logger.info(f"Generate stage completed for session {session_id[:8]}")
 
     except Exception as e:
-        logger.error(f"Generate stage failed for session {session_id[:8]}: {e}", exc_info=True)
+        logger.error(
+            f"Generate stage failed for session {session_id[:8]}: {e}", exc_info=True
+        )
 
         if not hasattr(app.state, "results"):
             app.state.results = {}
@@ -1437,6 +1525,7 @@ async def regenerate_slide(
 
         # Load summary checkpoint for GenerationInput
         from paper2slides.core.paths import get_summary_checkpoint
+
         state = load_state(config_dir)
         config = state.get("config", {})
 
@@ -1447,24 +1536,21 @@ async def regenerate_slide(
         with open(summary_checkpoint, "r") as f:
             summary_data = json.load(f)
 
-        # Reconstruct ContentPlan
-        from paper2slides.generator.content_planner import ContentPlan, Section, TableRef, FigureRef
-        from paper2slides.generator.config import GenerationInput, GenerationConfig, OutputType, StyleType
-        from paper2slides.summary.models import OriginalElements, TableInfo, FigureInfo
-
         plan_raw = plan_data.get("plan", {})
         sections = []
         for s in plan_raw.get("sections", []):
             tables = [TableRef(**t) for t in s.get("tables", [])]
             figures = [FigureRef(**f) for f in s.get("figures", [])]
-            sections.append(Section(
-                id=s.get("id"),
-                title=s.get("title"),
-                section_type=s.get("type", "content"),
-                content=s.get("content", ""),
-                tables=tables,
-                figures=figures,
-            ))
+            sections.append(
+                Section(
+                    id=s.get("id"),
+                    title=s.get("title"),
+                    section_type=s.get("type", "content"),
+                    content=s.get("content", ""),
+                    tables=tables,
+                    figures=figures,
+                )
+            )
 
         # Build tables_index and figures_index
         tables_index = {}
@@ -1532,9 +1618,6 @@ async def regenerate_slide(
         )
 
         # Reconstruct content from summary checkpoint
-        from paper2slides.summary.paper import PaperContent
-        from paper2slides.summary.general import GeneralContent
-
         content_type = summary_data.get("content_type", "paper")
         content_data = summary_data.get("content", {})
 
@@ -1581,7 +1664,7 @@ async def regenerate_slide(
                     style_ref_image_data = f.read()
 
             # Find the OLD version of the current slide being regenerated
-            for ext in ['.png', '.jpg', '.jpeg']:
+            for ext in [".png", ".jpg", ".jpeg"]:
                 old_slide_path = latest_output / f"slide_{slide_index + 1:02d}{ext}"
                 if old_slide_path.exists():
                     with open(old_slide_path, "rb") as f:
@@ -1589,7 +1672,6 @@ async def regenerate_slide(
                     break
 
         # Create ImageGenerator and regenerate
-        from paper2slides.generator.image_generator import ImageGenerator
 
         generator = ImageGenerator()
         result = generator.regenerate_single_slide(
@@ -1608,6 +1690,7 @@ async def regenerate_slide(
             output_dir = timestamp_dirs[0]
         else:
             from datetime import datetime
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_dir = config_dir / timestamp
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -1619,30 +1702,33 @@ async def regenerate_slide(
         # Delete any existing versions of this slide (any extension)
         slide_prefix = f"slide_{slide_index + 1:02d}"
         for old_file in output_dir.glob(f"{slide_prefix}.*"):
-            if old_file.suffix.lower() in ['.png', '.jpg', '.jpeg']:
+            if old_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
                 old_file.unlink()
                 logger.info(f"Deleted old slide file: {old_file.name}")
 
         # Convert to PNG if needed and save
-        from PIL import Image as PILImage
-        import io
+
         img = PILImage.open(io.BytesIO(result.image_data))
-        if img.mode == 'RGBA':
+        if img.mode == "RGBA":
             # Convert RGBA to RGB with white background for PNG
-            rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+            rgb_img = PILImage.new("RGB", img.size, (255, 255, 255))
             rgb_img.paste(img, mask=img.split()[3])
-            rgb_img.save(slide_path, 'PNG')
+            rgb_img.save(slide_path, "PNG")
         else:
-            img.convert('RGB').save(slide_path, 'PNG')
+            img.convert("RGB").save(slide_path, "PNG")
 
         logger.info(f"Regenerated slide {slide_index + 1} for session {session_id[:8]}")
 
         # Regenerate PDF with all current slides
-        slide_files = sorted([
-            f for f in output_dir.iterdir()
-            if f.is_file() and f.suffix.lower() in ['.png', '.jpg', '.jpeg']
-            and f.name.startswith('slide_')
-        ])
+        slide_files = sorted(
+            [
+                f
+                for f in output_dir.iterdir()
+                if f.is_file()
+                and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+                and f.name.startswith("slide_")
+            ]
+        )
 
         if slide_files:
             images = []
@@ -1654,15 +1740,17 @@ async def regenerate_slide(
             # Convert to RGB and save
             rgb_images = []
             for img in images:
-                if img.mode == 'RGBA':
-                    rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+                if img.mode == "RGBA":
+                    rgb_img = PILImage.new("RGB", img.size, (255, 255, 255))
                     rgb_img.paste(img, mask=img.split()[3])
                     rgb_images.append(rgb_img)
                 else:
-                    rgb_images.append(img.convert('RGB'))
+                    rgb_images.append(img.convert("RGB"))
 
             if rgb_images:
-                rgb_images[0].save(pdf_path, save_all=True, append_images=rgb_images[1:])
+                rgb_images[0].save(
+                    pdf_path, save_all=True, append_images=rgb_images[1:]
+                )
                 logger.info(f"Regenerated PDF after slide {slide_index + 1} update")
 
         # Return the URL
@@ -1676,7 +1764,9 @@ async def regenerate_slide(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error regenerating slide for session {session_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error regenerating slide for session {session_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1702,6 +1792,600 @@ async def download_file(filepath: str):
         filename=file_path.name,
         media_type="application/octet-stream",
     )
+
+
+# ============================================================================
+# Video Generation Endpoints
+# ============================================================================
+
+
+class VideoGenerateRequest(BaseModel):
+    voice_id: Optional[str] = "default"
+    transition_duration: Optional[float] = 3.0
+    transition_style: Optional[str] = "ai_animated"
+    resolution: Optional[str] = "1080p"
+    language: Optional[str] = "en"
+
+
+@app.post("/api/video/{session_id}/generate")
+async def generate_video(
+    session_id: str,
+    background_tasks: BackgroundTasks,
+    request: VideoGenerateRequest,
+):
+    """
+    Start video generation for a completed slide session.
+
+    This endpoint validates that slides exist, creates the video directory,
+    and starts the video generation pipeline in the background.
+
+    Args:
+        session_id: The session ID with completed slides
+        request: Video configuration options
+
+    Returns:
+        JSON with video_session_id and status
+    """
+    try:
+        # Find the session's config directory and slides
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        # Check that slides are generated
+        state = load_state(config_dir)
+        if not state or state.get("stages", {}).get("generate") != "completed":
+            raise HTTPException(
+                status_code=400,
+                detail="Slides must be fully generated before creating video. "
+                "Current status: "
+                + str(state.get("stages", {}) if state else "unknown"),
+            )
+
+        output_dir = get_latest_output_dir(config_dir)
+        if not output_dir:
+            raise HTTPException(
+                status_code=400, detail="No generated slides found for this session"
+            )
+
+        # Check for slide images
+        slide_images = sorted(
+            [
+                f
+                for f in output_dir.iterdir()
+                if f.is_file()
+                and f.suffix.lower() in [".png", ".jpg", ".jpeg"]
+                and f.name.startswith("slide_")
+            ]
+        )
+
+        if not slide_images:
+            raise HTTPException(
+                status_code=400, detail="No slide images found in output directory"
+            )
+
+        # Check if another session is running
+        running_session = session_manager.get_running_session()
+        if running_session:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Another session is already running: {running_session[:8]}",
+            )
+
+        # Create video directory and initialize state
+        video_dir = get_video_dir(output_dir)
+        setup_video_directories(video_dir)
+        setup_video_directories(video_dir)
+
+        try:
+            transition_style = TransitionStyle(request.transition_style)
+        except ValueError:
+            transition_style = TransitionStyle.AI_ANIMATED
+
+        try:
+            resolution = VideoResolution(request.resolution)
+        except ValueError:
+            resolution = VideoResolution.FHD_1080P
+
+        video_config = VideoConfig(
+            voice_id=request.voice_id or "default",
+            transition_style=transition_style,
+            transition_duration=request.transition_duration or 3.0,
+            resolution=resolution,
+            language=request.language or state.get("config", {}).get("language", "en"),
+        )
+
+        # Create and save initial video state
+        video_state = create_video_state(
+            session_id=session_id,
+            config=video_config,
+            total_slides=len(slide_images),
+        )
+
+        video_state_path = get_video_state_path(video_dir)
+        save_video_state(video_state_path, video_state)
+
+        logger.info(
+            f"Starting video generation for session {session_id[:8]} with {len(slide_images)} slides"
+        )
+
+        # Start video generation in background
+        background_tasks.add_task(
+            run_video_generation_background,
+            session_id,
+            video_dir,
+            slide_images,
+            video_config,
+            config_dir,
+            session_manager,
+        )
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "video_dir": str(video_dir.relative_to(OUTPUT_DIR)),
+            "total_slides": len(slide_images),
+            "message": "Video generation started",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error starting video generation for session {session_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def run_video_generation_background(
+    session_id: str,
+    video_dir: Path,
+    slide_images: List[Path],
+    video_config,
+    config_dir: Path,
+    session_manager: SessionManager,
+):
+    """
+    Run the video generation pipeline in the background.
+
+    Stages:
+    1. Script Generation - Generate narration scripts from slide content
+    2. Narration - Convert scripts to speech using ElevenLabs
+    3. Transitions - Generate AI transitions using Replicate Veo 3.1
+    4. Composition - Compose final video with slides, audio, and transitions
+    5. Export - Final encoding and cleanup
+    """
+
+    video_state_path = get_video_state_path(video_dir)
+
+    try:
+        can_start = await session_manager.start_session(session_id)
+        if not can_start:
+            logger.error(
+                f"Cannot start video generation for {session_id[:8]} - another session running"
+            )
+            mark_video_failed(video_state_path, "Another session is already running")
+            return
+
+        logger.info(f"Starting video generation pipeline for {session_id[:8]}")
+
+        # Load plan data for script generation
+        plan_checkpoint = get_plan_checkpoint(config_dir)
+        if not plan_checkpoint.exists():
+            raise Exception("Plan checkpoint not found")
+
+        with open(plan_checkpoint, "r") as f:
+            plan_data = json.load(f)
+
+        slides_data = plan_data.get("plan", {}).get("sections", [])
+
+        # =====================================================================
+        # Stage 1: Script Generation
+        # =====================================================================
+        logger.info("Stage 1: Script Generation")
+        update_video_stage(
+            video_state_path,
+            VideoStage.SCRIPT_GENERATION,
+            StageStatus.RUNNING,
+            "Generating narration scripts...",
+        )
+
+        if is_video_cancelled(video_state_path):
+            raise Exception("Video generation cancelled")
+
+        script_generator = ScriptGenerator()
+        scripts = []
+
+        for i, slide_data in enumerate(slides_data):
+            if is_video_cancelled(video_state_path):
+                raise Exception("Video generation cancelled")
+
+            script = script_generator.generate_script(
+                slide_data=slide_data,
+                slide_number=i + 1,
+                total_slides=len(slides_data),
+                language=video_config.language,
+                target_duration=30,
+            )
+            scripts.append(script)
+            add_script(video_state_path, i, script)
+            update_video_progress(
+                video_state_path,
+                current_slide=i + 1,
+                percentage=((i + 1) / len(slides_data)) * 20,
+                message=f"Generated script for slide {i + 1}/{len(slides_data)}",
+            )
+
+        update_video_stage(
+            video_state_path, VideoStage.SCRIPT_GENERATION, StageStatus.COMPLETED
+        )
+        logger.info(f"Generated {len(scripts)} narration scripts")
+
+        # =====================================================================
+        # Stage 2: Narration (ElevenLabs TTS)
+        # =====================================================================
+        logger.info("Stage 2: Narration")
+        update_video_stage(
+            video_state_path,
+            VideoStage.NARRATION,
+            StageStatus.RUNNING,
+            "Generating narration audio...",
+        )
+
+        if is_video_cancelled(video_state_path):
+            raise Exception("Video generation cancelled")
+
+        narration_dir = get_video_narration_dir(video_dir)
+        audio_files = []
+
+        elevenlabs_key = get_elevenlabs_api_key()
+        if elevenlabs_key:
+            elevenlabs_client = ElevenLabsClient(api_key=elevenlabs_key)
+
+            for i, script in enumerate(scripts):
+                if is_video_cancelled(video_state_path):
+                    raise Exception("Video generation cancelled")
+
+                audio_path = narration_dir / f"slide_{i + 1:02d}.mp3"
+                await elevenlabs_client.generate_speech(
+                    text=script,
+                    output_path=audio_path,
+                    voice_id=video_config.voice_id,
+                )
+                audio_files.append(audio_path)
+                add_narration_file(video_state_path, str(audio_path))
+                update_video_progress(
+                    video_state_path,
+                    current_slide=i + 1,
+                    percentage=20 + ((i + 1) / len(scripts)) * 20,
+                    message=f"Generated audio for slide {i + 1}/{len(scripts)}",
+                )
+        else:
+            # No ElevenLabs key - create silent audio placeholders
+            logger.warning("ElevenLabs API key not configured, using silent audio")
+            from pydub import AudioSegment
+
+            for i in range(len(scripts)):
+                audio_path = narration_dir / f"slide_{i + 1:02d}.mp3"
+                # Create 5 seconds of silence
+                silence = AudioSegment.silent(duration=5000)
+                silence.export(audio_path, format="mp3")
+                audio_files.append(audio_path)
+                add_narration_file(video_state_path, str(audio_path))
+
+        update_video_stage(
+            video_state_path, VideoStage.NARRATION, StageStatus.COMPLETED
+        )
+        logger.info(f"Generated {len(audio_files)} audio files")
+
+        # =====================================================================
+        # Stage 3: Transitions (Replicate Veo 3.1)
+        # =====================================================================
+        logger.info("Stage 3: Transitions")
+        update_video_stage(
+            video_state_path,
+            VideoStage.TRANSITIONS,
+            StageStatus.RUNNING,
+            "Generating AI transitions...",
+        )
+
+        if is_video_cancelled(video_state_path):
+            raise Exception("Video generation cancelled")
+
+        transitions_dir = get_video_transitions_dir(video_dir)
+        transition_files = []
+
+        if video_config.transition_style == TransitionStyle.AI_ANIMATED:
+            transition_generator = await create_transition_generator(use_ai=True)
+
+            def transition_progress(current, total):
+                if is_video_cancelled(video_state_path):
+                    raise Exception("Video generation cancelled")
+                update_video_progress(
+                    video_state_path,
+                    percentage=40 + (current / total) * 30,
+                    message=f"Generated transition {current}/{total}",
+                )
+
+            results = await transition_generator.generate_all_transitions(
+                slides=slide_images,
+                output_dir=transitions_dir,
+                prompt=video_config.transition_prompt,
+                duration=video_config.transition_duration,
+                progress_callback=transition_progress,
+            )
+            transition_files = [path for path, _ in results]
+            for path in transition_files:
+                add_transition_file(video_state_path, str(path))
+        else:
+            # Simple transitions or no transitions
+            logger.info("Using simple transitions (no AI)")
+            simple_gen = await create_transition_generator(use_ai=False)
+            results = await simple_gen.generate_all_transitions(
+                slides=slide_images,
+                output_dir=transitions_dir,
+                duration=1.0,  # Shorter for simple transitions
+            )
+            transition_files = [path for path, _ in results]
+
+        update_video_stage(
+            video_state_path, VideoStage.TRANSITIONS, StageStatus.COMPLETED
+        )
+        logger.info(f"Generated {len(transition_files)} transitions")
+
+        # =====================================================================
+        # Stage 4: Composition
+        # =====================================================================
+        logger.info("Stage 4: Composition")
+        update_video_stage(
+            video_state_path,
+            VideoStage.COMPOSITION,
+            StageStatus.RUNNING,
+            "Composing final video...",
+        )
+
+        if is_video_cancelled(video_state_path):
+            raise Exception("Video generation cancelled")
+
+        final_video_path = get_final_video_path(video_dir)
+
+        def composition_progress(stage, percentage):
+            if is_video_cancelled(video_state_path):
+                raise Exception("Video generation cancelled")
+            update_video_progress(
+                video_state_path,
+                percentage=70 + percentage * 0.2,
+                message=f"Composing: {stage}",
+            )
+
+        video_metadata = await compose_presentation_video(
+            slides=slide_images,
+            audio_files=audio_files,
+            transitions=transition_files if transition_files else None,
+            output_path=final_video_path,
+            config=video_config,
+            progress_callback=composition_progress,
+        )
+
+        update_video_stage(
+            video_state_path, VideoStage.COMPOSITION, StageStatus.COMPLETED
+        )
+        logger.info(
+            f"Video composed: {video_metadata.duration_seconds:.1f}s, {video_metadata.file_size_mb:.1f}MB"
+        )
+
+        # =====================================================================
+        # Stage 5: Export (finalize)
+        # =====================================================================
+        logger.info("Stage 5: Export")
+        update_video_stage(
+            video_state_path,
+            VideoStage.EXPORT,
+            StageStatus.RUNNING,
+            "Finalizing video...",
+        )
+
+        if is_video_cancelled(video_state_path):
+            raise Exception("Video generation cancelled")
+
+        composer = VideoComposer(video_config)
+        thumbnail_path = get_video_thumbnail_path(video_dir)
+        await composer.generate_thumbnail(final_video_path, thumbnail_path)
+
+        # Calculate relative URLs
+        video_url = f"/outputs/{final_video_path.relative_to(OUTPUT_DIR)}"
+        thumbnail_url = f"/outputs/{thumbnail_path.relative_to(OUTPUT_DIR)}"
+
+        # Mark as complete
+        set_video_output(
+            video_state_path,
+            video_url=video_url,
+            duration_seconds=video_metadata.duration_seconds,
+            file_size_mb=video_metadata.file_size_mb,
+            thumbnail_url=thumbnail_url,
+        )
+
+        logger.info(f"Video generation complete for session {session_id[:8]}")
+        logger.info(f"Video URL: {video_url}")
+
+    except Exception as e:
+        error_msg = str(e)
+        if "cancelled" in error_msg.lower():
+            logger.info(f"Video generation cancelled for session {session_id[:8]}")
+            from paper2slides.video import mark_video_cancelled
+
+            mark_video_cancelled(video_state_path)
+        else:
+            logger.error(
+                f"Video generation failed for session {session_id[:8]}: {e}",
+                exc_info=True,
+            )
+            mark_video_failed(video_state_path, error_msg)
+    finally:
+        await session_manager.end_session(session_id)
+
+
+@app.get("/api/video/{session_id}/status")
+async def get_video_status(session_id: str):
+    """
+    Get the status of video generation for a session.
+
+    Returns the current stage, progress, and any errors.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        output_dir = get_latest_output_dir(config_dir)
+        if not output_dir:
+            return {
+                "session_id": session_id,
+                "status": "not_started",
+                "message": "No video generation started for this session",
+            }
+
+        video_dir = get_video_dir(output_dir)
+        video_state_path = get_video_state_path(video_dir)
+
+        if not video_state_path.exists():
+            return {
+                "session_id": session_id,
+                "status": "not_started",
+                "message": "Video generation has not been started",
+            }
+
+        status_summary = get_video_status_summary(video_state_path)
+        if not status_summary:
+            return {
+                "session_id": session_id,
+                "status": "error",
+                "message": "Could not load video state",
+            }
+
+        return status_summary
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error getting video status for session {session_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/video/{session_id}/result")
+async def get_video_result(session_id: str):
+    """
+    Get the result of completed video generation.
+
+    Returns the video URL, thumbnail, duration, and file size.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+        output_dir = get_latest_output_dir(config_dir)
+        if not output_dir:
+            raise HTTPException(
+                status_code=404, detail="No output found for this session"
+            )
+
+        video_dir = get_video_dir(output_dir)
+        video_state_path = get_video_state_path(video_dir)
+
+        if not video_state_path.exists():
+            raise HTTPException(status_code=404, detail="Video generation not started")
+
+        state = load_video_state(video_state_path)
+        if not state:
+            raise HTTPException(status_code=500, detail="Could not load video state")
+
+        status = state.get("status")
+        if status != VideoStatus.COMPLETED.value:
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "session_id": session_id,
+                    "status": status,
+                    "message": "Video not ready yet",
+                    "progress": state.get("progress"),
+                },
+            )
+
+        output = state.get("output", {})
+        return {
+            "session_id": session_id,
+            "status": "completed",
+            "video_url": output.get("video_url"),
+            "thumbnail_url": output.get("thumbnail_url"),
+            "duration_seconds": output.get("duration_seconds"),
+            "file_size_mb": output.get("file_size_mb"),
+            "resolution": output.get("resolution"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error getting video result for session {session_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/video/{session_id}/cancel")
+async def cancel_video_generation(session_id: str):
+    """
+    Cancel video generation for a session.
+    """
+    try:
+        config_dir, base_dir, content_type = find_session_config_dir(session_id)
+
+        output_dir = get_latest_output_dir(config_dir)
+        if not output_dir:
+            return {"success": False, "message": "No output found"}
+
+        video_dir = get_video_dir(output_dir)
+        video_state_path = get_video_state_path(video_dir)
+
+        if not video_state_path.exists():
+            return {"success": False, "message": "Video generation not started"}
+
+        # Mark as cancelled
+        mark_video_cancelled(video_state_path)
+
+        # Also cancel via session manager if running
+        await session_manager.cancel_session(session_id)
+
+        return {"success": True, "message": "Video generation cancelled"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error cancelling video for session {session_id}: {e}", exc_info=True
+        )
+
+        output_dir = get_latest_output_dir(config_dir)
+        if not output_dir:
+            return {"success": False, "message": "No output found"}
+
+        video_dir = get_video_dir(output_dir)
+        video_state_path = get_video_state_path(video_dir)
+
+        if not video_state_path.exists():
+            return {"success": False, "message": "Video generation not started"}
+
+        # Mark as cancelled
+        mark_video_cancelled(video_state_path)
+
+        # Also cancel via session manager if running
+        await session_manager.cancel_session(session_id)
+
+        return {"success": True, "message": "Video generation cancelled"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error cancelling video for session {session_id}: {e}", exc_info=True
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

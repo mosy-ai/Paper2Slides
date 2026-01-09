@@ -8,12 +8,15 @@ import {
     X,
     Loader2,
     Presentation,
+    Video,
 } from "lucide-react";
 
 const SlideEditorStep = ({
     slides,
     sessionId,
     onRegenerateSlide,
+    onGenerateVideo,
+    videoUrl,
     error,
 }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -115,17 +118,43 @@ const SlideEditorStep = ({
                         </div>
                     </div>
 
-                    {/* Download Button */}
-                    {getDownloadUrl() && (
-                        <a
-                            href={getDownloadUrl()}
-                            download
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg font-medium transition-all"
-                        >
-                            <Download className="w-4 h-4" />
-                            Download PDF
-                        </a>
-                    )}
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-3">
+                        {/* Generate Video Button - only show if no video exists */}
+                        {onGenerateVideo && !videoUrl && (
+                            <button
+                                onClick={onGenerateVideo}
+                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all"
+                            >
+                                <Video className="w-4 h-4" />
+                                Generate Video
+                            </button>
+                        )}
+
+                        {/* Download Video Button - show if video exists */}
+                        {videoUrl && (
+                            <a
+                                href={videoUrl}
+                                download
+                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all"
+                            >
+                                <Download className="w-4 h-4" />
+                                Download Video
+                            </a>
+                        )}
+
+                        {/* Download PDF Button */}
+                        {getDownloadUrl() && (
+                            <a
+                                href={getDownloadUrl()}
+                                download
+                                className="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-lg font-medium transition-all"
+                            >
+                                <Download className="w-4 h-4" />
+                                Download PDF
+                            </a>
+                        )}
+                    </div>
                 </div>
 
                 {/* Slide Viewer */}

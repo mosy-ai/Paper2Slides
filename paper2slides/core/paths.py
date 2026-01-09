@@ -71,3 +71,161 @@ def get_output_dir(config_dir: Path) -> Path:
     """Get output directory with timestamp to preserve history."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return config_dir / timestamp
+
+
+def get_latest_output_dir(config_dir: Path) -> Path | None:
+    """Get the most recent timestamped output directory."""
+    if not config_dir.exists():
+        return None
+
+    # Find all timestamp directories (format: YYYYMMDD_HHMMSS)
+    timestamp_dirs = [
+        d for d in config_dir.iterdir()
+        if d.is_dir() and len(d.name) == 15 and d.name[8] == "_"
+    ]
+
+    if not timestamp_dirs:
+        return None
+
+    # Sort by name (which sorts by timestamp) and return latest
+    return sorted(timestamp_dirs, reverse=True)[0]
+
+
+# ============================================================================
+# Video Generation Paths
+# ============================================================================
+
+
+def get_video_dir(output_dir: Path) -> Path:
+    """
+    Get the video generation directory within an output directory.
+
+    Args:
+        output_dir: The timestamped output directory containing slides
+
+    Returns:
+        Path to the video/ subdirectory
+    """
+    return output_dir / "video"
+
+
+def get_video_state_path(video_dir: Path) -> Path:
+    """
+    Get the path to video_state.json.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to video_state.json
+    """
+    return video_dir / "video_state.json"
+
+
+def get_video_narration_dir(video_dir: Path) -> Path:
+    """
+    Get the directory for narration audio files.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to narration/ subdirectory
+    """
+    return video_dir / "narration"
+
+
+def get_video_transitions_dir(video_dir: Path) -> Path:
+    """
+    Get the directory for transition video segments.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to transitions/ subdirectory
+    """
+    return video_dir / "transitions"
+
+
+def get_video_final_dir(video_dir: Path) -> Path:
+    """
+    Get the directory for final composed video.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to final/ subdirectory
+    """
+    return video_dir / "final"
+
+
+def get_narration_file_path(video_dir: Path, slide_index: int) -> Path:
+    """
+    Get the path for a slide's narration audio file.
+
+    Args:
+        video_dir: The video directory
+        slide_index: Index of the slide (0-based)
+
+    Returns:
+        Path to the narration audio file
+    """
+    narration_dir = get_video_narration_dir(video_dir)
+    return narration_dir / f"slide_{slide_index + 1:02d}.mp3"
+
+
+def get_transition_file_path(video_dir: Path, transition_index: int) -> Path:
+    """
+    Get the path for a transition video segment.
+
+    Args:
+        video_dir: The video directory
+        transition_index: Index of the transition (0-based)
+
+    Returns:
+        Path to the transition video file
+    """
+    transitions_dir = get_video_transitions_dir(video_dir)
+    return transitions_dir / f"transition_{transition_index + 1:02d}.mp4"
+
+
+def get_final_video_path(video_dir: Path) -> Path:
+    """
+    Get the path for the final composed video.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to the final video file
+    """
+    final_dir = get_video_final_dir(video_dir)
+    return final_dir / "presentation.mp4"
+
+
+def get_video_thumbnail_path(video_dir: Path) -> Path:
+    """
+    Get the path for the video thumbnail.
+
+    Args:
+        video_dir: The video directory
+
+    Returns:
+        Path to the thumbnail image
+    """
+    final_dir = get_video_final_dir(video_dir)
+    return final_dir / "thumbnail.jpg"
+
+
+def setup_video_directories(video_dir: Path) -> None:
+    """
+    Create all necessary video generation directories.
+
+    Args:
+        video_dir: The video directory to set up
+    """
+    get_video_narration_dir(video_dir).mkdir(parents=True, exist_ok=True)
+    get_video_transitions_dir(video_dir).mkdir(parents=True, exist_ok=True)
+    get_video_final_dir(video_dir).mkdir(parents=True, exist_ok=True)

@@ -11,8 +11,9 @@ This script tests the complete workflow:
 Usage:
     python test_api.py
 """
-import os
+
 import json
+import os
 import time
 from pathlib import Path
 

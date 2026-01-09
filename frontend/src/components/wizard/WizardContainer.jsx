@@ -5,6 +5,8 @@ import ProcessingStep from "./ProcessingStep";
 import OutlineEditorStep from "./OutlineEditorStep";
 import GeneratingStep from "./GeneratingStep";
 import SlideEditorStep from "./SlideEditorStep";
+import VideoConfigStep from "./VideoConfigStep";
+import VideoGeneratingStep from "./VideoGeneratingStep";
 
 // Wizard steps
 const STEPS = {
@@ -13,6 +15,9 @@ const STEPS = {
     OUTLINE: "outline",
     GENERATING: "generating",
     EDITOR: "editor",
+    // Video generation steps
+    VIDEO_CONFIG: "video_config",
+    VIDEO_GENERATING: "video_generating",
 };
 
 const WizardContainer = ({
@@ -31,6 +36,26 @@ const WizardContainer = ({
     const [isLoading, setIsLoading] = useState(false);
     const [showInfoModal, setShowInfoModal] = useState(false);
 
+    // Video generation state
+    const [videoUrl, setVideoUrl] = useState(null);
+
+    // Helper to check if video exists for a session
+    const checkExistingVideo = async (sid) => {
+        try {
+            const response = await fetch(`/api/video/${sid}/status`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.status === "completed" && data.output?.video_url) {
+                    setVideoUrl(data.output.video_url);
+                    return true;
+                }
+            }
+        } catch (err) {
+            console.error("Error checking video status:", err);
+        }
+        return false;
+    };
+
     const pollIntervalRef = useRef(null);
     const abortControllerRef = useRef(null);
 
@@ -47,6 +72,7 @@ const WizardContainer = ({
         setStages({});
         setError(null);
         setIsLoading(false);
+        setVideoUrl(null);
 
         if (!conversation) {
             setCurrentStep(STEPS.UPLOAD);
@@ -86,6 +112,8 @@ const WizardContainer = ({
                             setSlides(cachedSlides);
                             setPlan(null);
                             setCurrentStep(STEPS.EDITOR);
+                            // Check if video already exists
+                            await checkExistingVideo(savedSessionId);
                         } else {
                             setCurrentStep(STEPS.UPLOAD);
                         }
@@ -106,6 +134,9 @@ const WizardContainer = ({
                                 setSlides(resultData.slides);
                                 setPlan(null);
                                 setCurrentStep(STEPS.EDITOR);
+
+                                // Check if video already exists
+                                await checkExistingVideo(savedSessionId);
 
                                 // Update stored data
                                 if (onUpdateConversation) {
@@ -131,6 +162,8 @@ const WizardContainer = ({
                             setSlides(cachedSlides);
                             setPlan(null);
                             setCurrentStep(STEPS.EDITOR);
+                            // Check if video already exists
+                            await checkExistingVideo(savedSessionId);
                         }
                     } else if (status === "awaiting_confirmation") {
                         // Restore to OUTLINE step and fetch plan
@@ -173,6 +206,8 @@ const WizardContainer = ({
                         setSlides(cachedSlides);
                         setPlan(null);
                         setCurrentStep(STEPS.EDITOR);
+                        // Check if video already exists
+                        await checkExistingVideo(savedSessionId);
                     } else {
                         setCurrentStep(STEPS.UPLOAD);
                     }
@@ -186,6 +221,7 @@ const WizardContainer = ({
             setSlides(cachedSlides);
             setPlan(null);
             setCurrentStep(STEPS.EDITOR);
+            // Note: Can't check video without sessionId
             return;
         }
 
@@ -569,6 +605,54 @@ const WizardContainer = ({
         }));
     }, []);
 
+    // Handle navigating to video generation
+    const handleGenerateVideo = useCallback(() => {
+        setVideoUrl(null);
+        setCurrentStep(STEPS.VIDEO_CONFIG);
+    }, []);
+
+    // Handle starting video generation
+    const handleStartVideoGeneration = useCallback(
+        async (videoConfig) => {
+            setError(null);
+
+            // Immediately transition to generating step for better UX
+            setCurrentStep(STEPS.VIDEO_GENERATING);
+
+            try {
+                const response = await fetch(`/api/video/${sessionId}/generate`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(videoConfig),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || "Failed to start video generation");
+                }
+
+                // Video generation started successfully - VideoGeneratingStep will poll for status
+            } catch (err) {
+                setError(err.message);
+                // Go back to config step on error
+                setCurrentStep(STEPS.VIDEO_CONFIG);
+                throw err;
+            }
+        },
+        [sessionId]
+    );
+
+    // Handle video generation complete - go back to editor with download button
+    const handleVideoComplete = useCallback((result) => {
+        setVideoUrl(result.video_url);
+        setCurrentStep(STEPS.EDITOR);
+    }, []);
+
+    // Handle video generation cancel or back
+    const handleVideoCancel = useCallback(() => {
+        setCurrentStep(STEPS.EDITOR);
+    }, []);
+
     // Render current step
     const renderStep = () => {
         switch (currentStep) {
@@ -613,7 +697,28 @@ const WizardContainer = ({
                         slides={slides}
                         sessionId={sessionId}
                         onRegenerateSlide={handleRegenerateSlide}
+                        onGenerateVideo={videoUrl ? null : handleGenerateVideo}
+                        videoUrl={videoUrl}
                         error={error}
+                    />
+                );
+
+            case STEPS.VIDEO_CONFIG:
+                return (
+                    <VideoConfigStep
+                        slides={slides}
+                        sessionId={sessionId}
+                        onGenerate={handleStartVideoGeneration}
+                        onBack={handleVideoCancel}
+                    />
+                );
+
+            case STEPS.VIDEO_GENERATING:
+                return (
+                    <VideoGeneratingStep
+                        sessionId={sessionId}
+                        onComplete={handleVideoComplete}
+                        onCancel={handleVideoCancel}
                     />
                 );
 
