@@ -31,7 +31,6 @@ class SlidesLength(str, Enum):
 class StyleType(str, Enum):
     """Predefined style types."""
     ACADEMIC = "academic"
-    DORAEMON = "doraemon"
     CUSTOM = "custom"
 
 

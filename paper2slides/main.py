@@ -44,8 +44,8 @@ def main():
                         help="Content type (default: paper)")
     parser.add_argument("--output", choices=["poster", "slides"], default="poster",
                         help="Output type (default: poster)")
-    parser.add_argument("--style", default="doraemon",
-                        help="Style: academic, doraemon, or custom description")
+    parser.add_argument("--style", default="academic",
+                        help="Style: academic or custom description")
     parser.add_argument("--length", choices=["short", "medium", "long"], default="short",
                         help="Slides length (default: short)")
     parser.add_argument("--density", choices=["sparse", "medium", "dense"], default="medium",

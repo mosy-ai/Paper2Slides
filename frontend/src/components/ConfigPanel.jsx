@@ -21,12 +21,12 @@ const ConfigPanel = ({
     isLoading = false,
 }) => {
     const [showConfigModal, setShowConfigModal] = useState(false);
-    const [selectedStyleType, setSelectedStyleType] = useState("academic"); // 'academic', 'doraemon', or 'custom'
+    const [selectedStyleType, setSelectedStyleType] = useState("academic"); // 'academic' or 'custom'
     const [customStyle, setCustomStyle] = useState("");
 
     // Initialize selectedStyleType based on current style
     useEffect(() => {
-        if (style === "academic" || style === "doraemon") {
+        if (style === "academic") {
             setSelectedStyleType(style);
         } else if (style) {
             // It's a custom style
@@ -415,7 +415,7 @@ const ConfigPanel = ({
                                     Style
                                 </label>
                                 <div className="inline-flex items-center bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl p-1">
-                                    {["academic", "doraemon", "custom"].map(
+                                    {["academic", "custom"].map(
                                         (styleOption) => {
                                             const isSelected =
                                                 selectedStyleType ===
@@ -440,10 +440,7 @@ const ConfigPanel = ({
                                                     )}
                                                     {styleOption === "academic"
                                                         ? "Academic"
-                                                        : styleOption ===
-                                                            "doraemon"
-                                                          ? "Doraemon"
-                                                          : "Custom"}
+                                                        : "Custom"}
                                                 </button>
                                             );
                                         },
